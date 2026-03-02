@@ -1,4 +1,4 @@
-import { Canvas, Path, Skia, SkPath } from '@shopify/react-native-skia';
+import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@shopify/react-native-skia';
 import React, { useRef, useState } from 'react';
 import { Button, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -192,6 +192,9 @@ export function HandwritingCanvas({
   // Tracks raw points of current gesture
   const pointsRef = useRef<Pt[]>([]);
 
+  // Tracks raw points of current lasso gesture
+  const selectPtsRef = useRef<Pt[]>([]);
+
   // True once gesture is classified as scribble
   const isErasingRef = useRef(false);
 
@@ -245,6 +248,7 @@ export function HandwritingCanvas({
         currentPathRef.current = p;
         setCurrentPath(p.copy());
       } else {
+        selectPtsRef.current = [{ x: e.x, y: e.y }];
         selectPathRef.current = p;
         setSelectPath(p.copy());
       }
@@ -282,6 +286,7 @@ export function HandwritingCanvas({
         const p = selectPathRef.current;
         if (!p) return;
 
+        selectPtsRef.current.push({ x: e.x, y: e.y });
         p.lineTo(e.x, e.y);
         setSelectPath(p.copy());
       }
@@ -313,8 +318,69 @@ export function HandwritingCanvas({
         currentPathRef.current = null;
         setCurrentPath(null);
       } else {
-        setSelectPath(null);
-        selectPathRef.current = null;
+        const lassoPts = selectPtsRef.current;
+
+        // Need at least a rough closed shape
+        if (lassoPts.length >= 3) {
+
+          // Auto-close the lasso path visually
+          const sp = selectPathRef.current;
+          if (sp) {
+            sp.close();
+            setSelectPath(sp.copy());
+          }
+
+          // Compute bounding box of lasso
+          let minX = lassoPts[0].x, maxX = lassoPts[0].x;
+          let minY = lassoPts[0].y, maxY = lassoPts[0].y;
+          for (const pt of lassoPts) {
+            minX = Math.min(minX, pt.x);
+            maxX = Math.max(maxX, pt.x);
+            minY = Math.min(minY, pt.y);
+            maxY = Math.max(maxY, pt.y);
+          }
+
+          const capW = Math.ceil(maxX - minX);
+          const capH = Math.ceil(maxY - minY);
+
+          if (capW > 0 && capH > 0) {
+
+            // Render strokes into an off-screen Skia surface
+            const surface = Skia.Surface.Make(capW, capH);
+
+            if (surface) {
+              const offCanvas = surface.getCanvas();
+
+              // Fill with white background
+              offCanvas.drawColor(Skia.Color('white'));
+
+              // Offset so lasso top-left maps to surface origin
+              offCanvas.translate(-minX, -minY);
+
+              const paint = Skia.Paint();
+              paint.setStyle(PaintStyle.Stroke);
+              paint.setStrokeWidth(strokeWidth);
+              paint.setStrokeCap(StrokeCap.Round);
+              paint.setStrokeJoin(StrokeJoin.Round);
+              paint.setColor(Skia.Color(strokeColor));
+
+              for (const path of pathsRef.current) {
+                offCanvas.drawPath(path, paint);
+              }
+
+              const image = surface.makeImageSnapshot();
+              const base64 = image.encodeToBase64();
+              console.log('Lasso selection captured (base64 PNG):', base64);
+            }
+          }
+        }
+
+        // Clear lasso after a short delay so user sees the closed shape
+        setTimeout(() => {
+          setSelectPath(null);
+          selectPathRef.current = null;
+          selectPtsRef.current = [];
+        }, 400);
       }
     });
 
