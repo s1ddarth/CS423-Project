@@ -385,13 +385,14 @@ export function HandwritingCanvas({
                     type: 'image/png',
                   } as any);
 
-                  const res = await fetch('http://localhost:8000/recognize/upload', { // or whatever the ip is of ur backend
+                  const res = await fetch('http://10.55.222.169:8000/recognize/upload', { // or whatever the ip is of ur backend
                     method: 'POST',
                     body: formData,
                   });
 
                   const json = await res.json();
                   console.log('LaTeX:', json.latex);
+                  console.log('JSON:', json);
                   onRecognize?.(json.latex); // sends it over to index.tsx
                 } catch (err) {
                   console.error('Recognition failed:', err); // TODO: error message
