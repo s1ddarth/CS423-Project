@@ -66,6 +66,10 @@ def _image_to_latex(image_bytes: bytes) -> str:
     latex = img2latex(model, tokenizer, [arr])[0]
     return latex
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "model_loaded": True}
+
 @app.post("/recognize/upload", response_model=RecognizeResponse)
 async def recognize_from_upload(image: UploadFile = File(...)) -> RecognizeResponse:
     contents = await image.read()
