@@ -233,11 +233,18 @@ export function HandwritingCanvas({
     .minDistance(0) 
     .runOnJS(true)
 
+
     .onBegin((e) => {
+
 
       const p = Skia.Path.Make();
       p.moveTo(e.x, e.y);
       p.lineTo(e.x, e.y);
+
+      // Initialize new gesture tracking
+      pointsRef.current = [{ x: e.x, y: e.y }];
+      isErasingRef.current = false;
+
 
       // Initialize new gesture tracking
       pointsRef.current = [{ x: e.x, y: e.y }];
@@ -252,7 +259,33 @@ export function HandwritingCanvas({
       }
     })
 
+
     .onUpdate((e) => {
+
+      if (tool === 'pen') {
+
+        const pt = { x: e.x, y: e.y };
+        pointsRef.current.push(pt);
+
+        // Detect scribble
+        if (!isErasingRef.current && detectScribble(pointsRef.current)) {
+          isErasingRef.current = true;
+          currentPathRef.current = null;
+          setCurrentPath(null);
+        }
+
+        // If scribbling, erase instead of drawing
+        if (isErasingRef.current) {
+          eraseAt(pt);
+
+          const pts = pointsRef.current;
+          for (let i = Math.max(0, pts.length - 10); i < pts.length; i++) {
+            eraseAt(pts[i]);
+          }
+          return;
+        }
+
+        // Normal pen drawing
 
       if (tool === 'pen') {
 
@@ -287,12 +320,21 @@ export function HandwritingCanvas({
       } else {
 
         const p = selectPathRef.current;
+
+        p.lineTo(e.x, e.y);
+        setCurrentPath(p.copy());
+
+      } else {
+
+        const p = selectPathRef.current;
         if (!p) return;
+
 
         p.lineTo(e.x, e.y);
         setSelectPath(p.copy());
       }
     })
+
 
     .onEnd(() => {
 
@@ -307,9 +349,31 @@ export function HandwritingCanvas({
           return;
         }
 
+
+      if (tool === 'pen') {
+
+        // If scribble, do not commit stroke
+        if (isErasingRef.current) {
+          isErasingRef.current = false;
+          pointsRef.current = [];
+          currentPathRef.current = null;
+          setCurrentPath(null);
+          return;
+        }
+
         const p = currentPathRef.current;
 
+
         if (p) {
+
+          const newPaths = [...pathsRef.current, p];
+          const newPts = [...pathsPtsRef.current, [...pointsRef.current]];
+
+          pathsRef.current = newPaths;
+          pathsPtsRef.current = newPts;
+
+          setPaths(newPaths);
+          setPathsPts(newPts);
 
           const newPaths = [...pathsRef.current, p];
           const newPts = [...pathsPtsRef.current, [...pointsRef.current]];
@@ -322,8 +386,12 @@ export function HandwritingCanvas({
         }
 
         pointsRef.current = [];
+
+        pointsRef.current = [];
         currentPathRef.current = null;
         setCurrentPath(null);
+
+      } else {
 
       } else {
         setSelectPath(null);
@@ -333,6 +401,50 @@ export function HandwritingCanvas({
 
   return (
     <>
+      <Button title="Pen" onPress={() => setTool('pen')} />
+      <Button title="Select" onPress={() => setTool('select')} />
+
+      <GestureDetector gesture={pan}>
+        <View style={[styles.canvas, style]} onLayout={(e) => setLayout(e.nativeEvent.layout)}>
+          {layout.width > 0 && layout.height > 0 && (
+            <Canvas style={StyleSheet.absoluteFill}>
+              {paths.map((d, i) => (
+                <Path
+                  key={i}
+                  path={d}
+                  style="stroke"
+                  strokeWidth={strokeWidth}
+                  strokeJoin="round"
+                  strokeCap="round"
+                  color={strokeColor}
+                />
+              ))}
+
+              {currentPath && (
+                <Path
+                  path={currentPath}
+                  style="stroke"
+                  strokeWidth={strokeWidth}
+                  strokeJoin="round"
+                  strokeCap="round"
+                  color={strokeColor}
+                />
+              )}
+
+              {selectPath && (
+                <Path
+                  path={selectPath}
+                  style="stroke"
+                  strokeWidth={3}
+                  strokeJoin="round"
+                  strokeCap="round"
+                  color="#f60000"
+                />
+              )}
+            </Canvas>
+          )}
+        </View>
+      </GestureDetector>
       <Button title="Pen" onPress={() => setTool('pen')} />
       <Button title="Select" onPress={() => setTool('select')} />
 
