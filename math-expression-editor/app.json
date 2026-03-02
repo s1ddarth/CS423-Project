@@ -3,7 +3,7 @@
     "name": "math-expression-editor",
     "slug": "math-expression-editor",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "mathexpressioneditor",
     "userInterfaceStyle": "automatic",

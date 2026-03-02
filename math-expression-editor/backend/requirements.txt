@@ -1,0 +1,6 @@
+# Server + TexTeller requirements
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+texteller
+python-multipart>=0.0.12
+pillow>=10.0.0
