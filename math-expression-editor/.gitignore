@@ -1,4 +1,8 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# python venv
+backend/venv/
+backend/math-editor-venv/
+backend/__pycache__/
 
 # dependencies
 node_modules/

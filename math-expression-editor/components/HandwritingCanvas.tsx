@@ -1,4 +1,5 @@
 import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@shopify/react-native-skia';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useRef, useState } from 'react';
 import { Button, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -161,10 +162,12 @@ export function HandwritingCanvas({
   style,
   strokeColor = '#111',
   strokeWidth = 3,
+  onRecognize, // triggers upon recieving latex from backend
 }: {
   style?: object;
   strokeColor?: string;
   strokeWidth?: number;
+  onRecognize?: (latex: string) => void; 
 }) {
 
   const [layout, setLayout] = useState({ width: 0, height: 0 });
@@ -317,20 +320,20 @@ export function HandwritingCanvas({
         pointsRef.current = [];
         currentPathRef.current = null;
         setCurrentPath(null);
-      } else {
+      } else { // we gotta close the selection path n send it over to backend now
         const lassoPts = selectPtsRef.current;
 
-        // Need at least a rough closed shape
+        // omit short shapes
         if (lassoPts.length >= 3) {
 
-          // Auto-close the lasso path visually
+          // close it
           const sp = selectPathRef.current;
           if (sp) {
             sp.close();
             setSelectPath(sp.copy());
           }
 
-          // Compute bounding box of lasso
+          // make it a box 
           let minX = lassoPts[0].x, maxX = lassoPts[0].x;
           let minY = lassoPts[0].y, maxY = lassoPts[0].y;
           for (const pt of lassoPts) {
@@ -345,16 +348,13 @@ export function HandwritingCanvas({
 
           if (capW > 0 && capH > 0) {
 
-            // Render strokes into an off-screen Skia surface
+            // all this is to re-render the strokes to a surface that we can send to the backend
             const surface = Skia.Surface.Make(capW, capH);
 
             if (surface) {
               const offCanvas = surface.getCanvas();
-
-              // Fill with white background
               offCanvas.drawColor(Skia.Color('white'));
 
-              // Offset so lasso top-left maps to surface origin
               offCanvas.translate(-minX, -minY);
 
               const paint = Skia.Paint();
@@ -370,7 +370,33 @@ export function HandwritingCanvas({
 
               const image = surface.makeImageSnapshot();
               const base64 = image.encodeToBase64();
-              console.log('Lasso selection captured (base64 PNG):', base64);
+
+              (async () => {
+                try {
+                  const tempPath = FileSystem.cacheDirectory + 'lasso_capture.png';
+                  await FileSystem.writeAsStringAsync(tempPath, base64, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+
+                  const formData = new FormData();
+                  formData.append('image', {
+                    uri: tempPath,
+                    name: 'selection.png',
+                    type: 'image/png',
+                  } as any);
+
+                  const res = await fetch('http://localhost:8000/recognize/upload', { // or whatever the ip is of ur backend
+                    method: 'POST',
+                    body: formData,
+                  });
+
+                  const json = await res.json();
+                  console.log('LaTeX:', json.latex);
+                  onRecognize?.(json.latex); // sends it over to index.tsx
+                } catch (err) {
+                  console.error('Recognition failed:', err); // TODO: error message
+                }
+              })();
             }
           }
         }

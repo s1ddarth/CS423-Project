@@ -28,4 +28,8 @@ export const styles = StyleSheet.create({
     flex: 1,
     minHeight: 120,
   },
+  katexView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
 });
