@@ -27,6 +27,7 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 - API: http://localhost:8000 
 - Health (GET): http://localhost:8000/health
 - Upload Image (POST): http://localhost:8000/recognize/upload
+- **Interactive API docs (i highly recommend this when trying it out):** http://localhost:8000/docs — view and try the API from the browser.
 
 ## Test image upload
 ### Postman
