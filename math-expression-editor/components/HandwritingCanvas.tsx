@@ -227,8 +227,10 @@ export function HandwritingCanvas({
     setPathsPts(newPts);
   };
 
+
+  // Pan gesture handler for drawing strokes or selection boxes
   const pan = Gesture.Pan()
-    .minDistance(0)
+    .minDistance(0) 
     .runOnJS(true)
 
     .onBegin((e) => {
@@ -331,50 +333,56 @@ export function HandwritingCanvas({
 
   return (
     <>
-      <Button title="Pen" onPress={() => setTool('pen')} />
-      <Button title="Select" onPress={() => setTool('select')} />
-
-      <GestureDetector gesture={pan}>
-        <View style={[styles.canvas, style]} onLayout={(e) => setLayout(e.nativeEvent.layout)}>
-          {layout.width > 0 && layout.height > 0 && (
-            <Canvas style={StyleSheet.absoluteFill}>
-              {paths.map((d, i) => (
-                <Path
-                  key={i}
-                  path={d}
-                  style="stroke"
-                  strokeWidth={strokeWidth}
-                  strokeJoin="round"
-                  strokeCap="round"
-                  color={strokeColor}
-                />
-              ))}
-
-              {currentPath && (
-                <Path
-                  path={currentPath}
-                  style="stroke"
-                  strokeWidth={strokeWidth}
-                  strokeJoin="round"
-                  strokeCap="round"
-                  color={strokeColor}
-                />
-              )}
-
-              {selectPath && (
-                <Path
-                  path={selectPath}
-                  style="stroke"
-                  strokeWidth={3}
-                  strokeJoin="round"
-                  strokeCap="round"
-                  color="#f60000"
-                />
-              )}
-            </Canvas>
-          )}
-        </View>
-      </GestureDetector>
+    {/* Tool selection buttons */}
+    <Button title="Pen" onPress={() => setTool('pen')} />
+    <Button title="Select" onPress={() => setTool('select')} />
+    
+    {/* Gesture detector wraps the canvas to capture touch input */}
+    <GestureDetector gesture={pan}>
+      <View style={[styles.canvas, style]} onLayout={(e) => setLayout(e.nativeEvent.layout)}>
+        {/* Only render Skia canvas once layout is known */}
+        {layout.width > 0 && layout.height > 0 && (
+          <Canvas style={StyleSheet.absoluteFill}>
+            {/* Render all committed ink strokes in black */}
+            {paths.map((d, i) => (
+              <Path
+                key={i}
+                path={d}
+                style="stroke"
+                strokeWidth={3}
+                strokeJoin="round"
+                strokeCap="round"
+                color="#111"
+              />
+            ))}
+            
+            {/* Render the current in-progress stroke (if pen mode) */}
+            {currentPath ? (
+              <Path  
+                path={currentPath}
+                style="stroke"
+                strokeWidth={3}
+                strokeJoin="round"
+                strokeCap="round"
+                color="#111"
+              />
+            ) : null}
+            
+            {/* Render the selection outline in red*/}
+            {selectPath ? (
+              <Path
+                path={selectPath}
+                style="stroke"
+                strokeWidth={3}
+                strokeJoin="round"
+                strokeCap="round"
+                color="#f60000"
+              />
+            ) : null}
+          </Canvas>
+        )}
+      </View>
+    </GestureDetector>
     </>
   );
 }
