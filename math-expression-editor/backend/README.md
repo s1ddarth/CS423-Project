@@ -24,4 +24,23 @@ pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- API: http://localhost:8000  
+- API: http://localhost:8000 
+- Health (GET): http://localhost:8000/health
+- Upload Image (POST): http://localhost:8000/recognize/upload
+
+## Test image upload
+### Postman
+
+1. Set **Method** to **POST** 
+2. Set **URL** to `http://localhost:8000/recognize/upload`.
+3. Open the **Body** tab -> select **form-data**.
+4. Add a row: **Key** = `image`, change the type to **File** (dropdown on the right), then click **Select Files** and pick an image.
+5. Click **Send**. You should get a 200 response with JSON like `{"latex": "..."}`.
+
+To copy the full request: **Code** (</>) → **cURL** → **Copy**.
+
+### Terminal
+```bash
+curl --location 'http://localhost:8000/recognize/upload' \
+--form 'image=@"/path/to/your/image.png"'
+```
