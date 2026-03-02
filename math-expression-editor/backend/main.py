@@ -73,5 +73,5 @@ async def recognize_from_upload(image: UploadFile = File(...)) -> RecognizeRespo
         latex = _image_to_latex(contents)
         return RecognizeResponse(latex=latex)
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Recognition failed}")
+        raise HTTPException(status_code=500, detail="Recognition failed")
         
