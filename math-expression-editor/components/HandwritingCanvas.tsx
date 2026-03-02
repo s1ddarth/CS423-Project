@@ -9,36 +9,49 @@ export function HandwritingCanvas({ style }: { style?: object }) {
   const [currentPath, setCurrentPath] = useState<SkPath | null>(null);
   const currentPathRef = useRef<SkPath | null>(null);
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
-  const selectPath = useRef<SkPath | null>(null);
+  const [selectPath, setSelectPath] = useState<SkPath | null>(null);
 
 
   const pan = Gesture.Pan()
     .minDistance(0)
     .runOnJS(true)
     .onBegin((e) => {
-      if tool === 'pen' {
-        const p = Skia.Path.Make();
-        p.moveTo(e.x, e.y);
-        p.lineTo(e.x, e.y);
+      const p = Skia.Path.Make();
+      p.moveTo(e.x, e.y);
+      p.lineTo(e.x, e.y);
+      if (tool === 'pen') {
         currentPathRef.current = p;
         setCurrentPath(p.copy());
       } else {
-        
+        setSelectPath(p.copy());
       }
     })
     .onUpdate((e) => {
-      const p = currentPathRef.current;
-      if (!p) return;
-      p.lineTo(e.x, e.y);
-      setCurrentPath(p.copy());
+      if (tool === 'pen'){
+        const p = currentPathRef.current;
+        if (!p) return;
+        p.lineTo(e.x, e.y);
+        setCurrentPath(p.copy());
+      }
+      else {
+        const p = selectPath;
+        if (!p) return;
+        p.lineTo(e.x, e.y);
+        setSelectPath(p.copy());
+      }
     })
     .onEnd(() => {
-      const p = currentPathRef.current;
-      if (p) {
-        setPaths((prev) => [...prev, p]);
+      if (tool === 'pen'){
+        const p = currentPathRef.current;
+        if (p) {
+          setPaths((prev) => [...prev, p]);
+        }
+        currentPathRef.current = null;
+        setCurrentPath(null);
       }
-      currentPathRef.current = null;
-      setCurrentPath(null);
+      else {
+        setSelectPath(null);
+      }
     });
 
   return (
@@ -61,13 +74,23 @@ export function HandwritingCanvas({ style }: { style?: object }) {
               />
             ))}
             {currentPath ? (
-              <Path
+              <Path  
                 path={currentPath}
                 style="stroke"
                 strokeWidth={3}
                 strokeJoin="round"
                 strokeCap="round"
                 color="#111"
+              />
+            ) : null}
+            {selectPath ? (
+              <Path
+                path={selectPath}
+                style="stroke"
+                strokeWidth={3}
+                strokeJoin="round"
+                strokeCap="round"
+                color="#f60000"
               />
             ) : null}
           </Canvas>
