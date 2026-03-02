@@ -28,9 +28,9 @@ export default function HomeScreen() {
             Handwriting
           </ThemedText>
           <HandwritingCanvas
-            strokeColor="black"
-            strokeWidth={3}
-            style={styles.canvas}
+          strokeColor="black"
+          strokeWidth={3}
+          style={styles.canvas}
           />
         </View>
       </View>
