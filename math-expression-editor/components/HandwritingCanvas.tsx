@@ -227,8 +227,10 @@ export function HandwritingCanvas({
     setPathsPts(newPts);
   };
 
+
+  // Pan gesture handler for drawing strokes or selection boxes
   const pan = Gesture.Pan()
-    .minDistance(0)
+    .minDistance(0) 
     .runOnJS(true)
 
     .onBegin((e) => {
