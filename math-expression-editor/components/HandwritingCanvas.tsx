@@ -1,7 +1,7 @@
 import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@shopify/react-native-skia';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useRef, useState } from 'react';
-import { Button, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 /*
@@ -182,6 +182,7 @@ export function HandwritingCanvas({
   const currentPathRef = useRef<SkPath | null>(null);
 
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
+  const [hasChosenTool, setHasChosenTool] = useState(false);
 
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
   const selectPathRef = useRef<SkPath | null>(null);
@@ -413,9 +414,32 @@ export function HandwritingCanvas({
 
   return (
     <>
-      <Button title="Pen" onPress={() => setTool('pen')} />
-      <Button title="Select" onPress={() => setTool('select')} />
-
+      <View style={styles.toolRow}>
+        <Pressable
+          onPress={() => {
+            setTool('pen');
+            setHasChosenTool(true);
+          }}
+          style={[
+            styles.toolButton,
+            hasChosenTool && tool === 'pen' && styles.toolButtonActive,
+          ]}
+        >
+          <Text style={styles.toolButtonLabel}>Pen</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setTool('select');
+            setHasChosenTool(true);
+          }}
+          style={[
+            styles.toolButton,
+            hasChosenTool && tool === 'select' && styles.toolButtonActive,
+          ]}
+        >
+          <Text style={styles.toolButtonLabel}>Select</Text>
+        </Pressable>
+      </View>
       <GestureDetector gesture={pan}>
         <View style={[styles.canvas, style]} onLayout={(e) => setLayout(e.nativeEvent.layout)}>
           {layout.width > 0 && layout.height > 0 && (
@@ -463,4 +487,23 @@ export function HandwritingCanvas({
 
 const styles = StyleSheet.create({
   canvas: { flex: 1, backgroundColor: '#fff', borderRadius: 8 },
+  toolRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  toolButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#C0C0C0',
+  },
+  toolButtonActive: {
+    backgroundColor: '#E0E0E0',
+  },
+  toolButtonLabel: {
+    color: '#111',
+    fontWeight: '500',
+  },
 });
