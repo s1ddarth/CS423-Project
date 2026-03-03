@@ -412,6 +412,20 @@ export function HandwritingCanvas({
       }
     });
 
+  const clearAll = () => {
+    pathsRef.current = [];
+    pathsPtsRef.current = [];
+    setPaths([]);
+    setPathsPts([]);
+    currentPathRef.current = null;
+    setCurrentPath(null);
+    selectPathRef.current = null;
+    setSelectPath(null);
+    selectPtsRef.current = [];
+    pointsRef.current = [];
+    isErasingRef.current = false;
+  };
+
   return (
     <>
       <View style={styles.toolRow}>
@@ -438,6 +452,9 @@ export function HandwritingCanvas({
           ]}
         >
           <Text style={styles.toolButtonLabel}>Select</Text>
+        </Pressable>
+        <Pressable onPress={clearAll} style={[styles.toolButton, styles.clearButton]}>
+          <Text style={styles.toolButtonLabel}>Clear</Text>
         </Pressable>
       </View>
       <GestureDetector gesture={pan}>
@@ -498,6 +515,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 6,
     backgroundColor: '#C0C0C0',
+  },
+  clearButton: {
+    backgroundColor: '#f5b5b5',
   },
   toolButtonActive: {
     backgroundColor: '#E0E0E0',
