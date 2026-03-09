@@ -81,7 +81,10 @@ export default function HomeScreen() {
           strokeColor="black"
           strokeWidth={3}
           style={styles.canvas}
-          onRecognize={setLatex}
+          onRecognize={(newLatex) => {
+            const clean = stripMathDelimiters(newLatex);
+            setLatex((prev) => (prev ? `${prev} \\\\ ${clean}` : clean));
+          }}
           />
         </View>
       </View>
