@@ -411,6 +411,7 @@ export function HandwritingCanvas({
           selectPathRef.current = null;
           selectPtsRef.current = [];
         }, 400);
+        setTool('pen');
       }
     });
 
