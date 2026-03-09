@@ -347,6 +347,9 @@ export function HandwritingCanvas({
           const capW = Math.ceil(maxX - minX);
           const capH = Math.ceil(maxY - minY);
 
+          const API_BASE_URL = 'http://localhost:8000';
+          // const API_BASE_URL = 'http://10.9.183.62:8000';
+
           if (capW > 0 && capH > 0) {
 
             // all this is to re-render the strokes to a surface that we can send to the backend
@@ -386,7 +389,7 @@ export function HandwritingCanvas({
                     type: 'image/png',
                   } as any);
 
-                  const res = await fetch('http://localhost:8000/recognize/upload', {
+                  const res = await fetch(`${API_BASE_URL}/recognize/upload`, {
                     method: 'POST',
                     body: formData,
                   });
