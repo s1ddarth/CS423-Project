@@ -182,7 +182,6 @@ export function HandwritingCanvas({
   const currentPathRef = useRef<SkPath | null>(null);
 
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
-  const [hasChosenTool, setHasChosenTool] = useState(false);
 
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
   const selectPathRef = useRef<SkPath | null>(null);
@@ -347,6 +346,9 @@ export function HandwritingCanvas({
           const capW = Math.ceil(maxX - minX);
           const capH = Math.ceil(maxY - minY);
 
+          const API_BASE_URL = 'http://localhost:8000';
+          // const API_BASE_URL = 'http://10.9.183.62:8000';
+
           if (capW > 0 && capH > 0) {
 
             // all this is to re-render the strokes to a surface that we can send to the backend
@@ -386,7 +388,7 @@ export function HandwritingCanvas({
                     type: 'image/png',
                   } as any);
 
-                  const res = await fetch('http://10.55.222.169:8000/recognize/upload', { // or whatever the ip is of ur backend
+                  const res = await fetch(`${API_BASE_URL}/recognize/upload`, {
                     method: 'POST',
                     body: formData,
                   });
@@ -417,6 +419,7 @@ export function HandwritingCanvas({
     pathsPtsRef.current = [];
     setPaths([]);
     setPathsPts([]);
+    setTool('pen');
     currentPathRef.current = null;
     setCurrentPath(null);
     selectPathRef.current = null;
@@ -432,26 +435,38 @@ export function HandwritingCanvas({
         <Pressable
           onPress={() => {
             setTool('pen');
-            setHasChosenTool(true);
           }}
           style={[
             styles.toolButton,
-            hasChosenTool && tool === 'pen' && styles.toolButtonActive,
+            tool === 'pen' && styles.toolButtonActive,
           ]}
         >
-          <Text style={styles.toolButtonLabel}>Pen</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'pen' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Pen
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => {
             setTool('select');
-            setHasChosenTool(true);
           }}
           style={[
             styles.toolButton,
-            hasChosenTool && tool === 'select' && styles.toolButtonActive,
+            tool === 'select' && styles.toolButtonActive,
           ]}
         >
-          <Text style={styles.toolButtonLabel}>Select</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'select' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Select
+          </Text>
         </Pressable>
         <Pressable onPress={clearAll} style={[styles.toolButton, styles.clearButton]}>
           <Text style={styles.toolButtonLabel}>Clear</Text>
@@ -520,10 +535,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5b5b5',
   },
   toolButtonActive: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#007AFF',
   },
   toolButtonLabel: {
     color: '#111',
     fontWeight: '500',
+  },
+  toolButtonLabelActive: {
+    color: '#fff',
   },
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 
@@ -55,9 +55,17 @@ export default function HomeScreen() {
       {/* Latex panel */}
       <View style={styles.row}>
         <ThemedView style={styles.latexPanel}>
-          <ThemedText type="subtitle" style={styles.panelTitle}>
-            LaTeX Preview
-          </ThemedText>
+          <View style={styles.latexHeaderRow}>
+            <ThemedText type="subtitle" style={styles.panelTitle}>
+              LaTeX Preview
+            </ThemedText>
+            <Pressable
+              onPress={() => setLatex(null)}
+              style={styles.latexClearButton}
+            >
+              <Text style={styles.latexClearLabel}>Clear</Text>
+            </Pressable>
+          </View>
           {latex ? (
             <WebView
               style={styles.katexView}
@@ -81,7 +89,10 @@ export default function HomeScreen() {
           strokeColor="black"
           strokeWidth={3}
           style={styles.canvas}
-          onRecognize={setLatex}
+          onRecognize={(newLatex) => {
+            const clean = stripMathDelimiters(newLatex);
+            setLatex((prev) => (prev ? `${prev} \\\\ ${clean}` : clean));
+          }}
           />
         </View>
       </View>
