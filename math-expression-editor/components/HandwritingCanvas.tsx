@@ -386,7 +386,7 @@ export function HandwritingCanvas({
                     type: 'image/png',
                   } as any);
 
-                  const res = await fetch('http://10.55.222.169:8000/recognize/upload', { // or whatever the ip is of ur backend
+                  const res = await fetch('http://localhost:8000/recognize/upload', {
                     method: 'POST',
                     body: formData,
                   });
