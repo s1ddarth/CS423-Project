@@ -16,6 +16,22 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'flex-start',
   },
+  latexHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  latexClearButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#f5b5b5',
+  },
+  latexClearLabel: {
+    color: '#111',
+    fontWeight: '500',
+  },
   canvasPanel: {
     flex: 1,
     padding: 16,
