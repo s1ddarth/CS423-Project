@@ -2,6 +2,7 @@ import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@
 import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 
 // const BACKEND_URL = 'http://10.201.0.55:8000/recognize/upload';
 const BACKEND_URL = 'http://localhost:8000/recognize/upload';
@@ -37,61 +38,52 @@ function dist(a: Pt, b: Pt) {
   Used when we only compare distances (faster).
 */
 function dist2(a: Pt, b: Pt) {
-  const dx = a.x - b.x; // horizontal difference
-  const dy = a.y - b.y; // vertical difference
-  return dx * dx + dy * dy; // squared distance
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
 }
 
-/*
-  pointToSegDist2:
-  Returns squared distance from point p to a line segment a->b.
-  This is how we check if a scribble is close to a stroke segment.
-*/
-function pointToSegDist2(p: Pt, a: Pt, b: Pt) {
+function convertToPDollar(strokes: Pt[][]) {
+  const pts: any[] = [];
 
-  // Vector from a to b
+  strokes.forEach((stroke, strokeId) => {
+    stroke.forEach((p) => {
+      pts.push(new Point(p.x, p.y, strokeId));
+    });
+  });
+
+  return pts;
+}
+
+function pointToSegDist2(p: Pt, a: Pt, b: Pt) {
   const abx = b.x - a.x;
   const aby = b.y - a.y;
 
-  // Vector from a to p
   const apx = p.x - a.x;
   const apy = p.y - a.y;
 
   const abLen2 = abx * abx + aby * aby;
 
-  // If segment is basically a single point
   if (abLen2 === 0) return dist2(p, a);
 
-  // Project p onto segment a->b
   let t = (apx * abx + apy * aby) / abLen2;
-
-  // Clamp projection so it stays within the segment
   t = Math.max(0, Math.min(1, t));
 
-  // Compute closest point on segment
   const cx = a.x + t * abx;
   const cy = a.y + t * aby;
 
   return dist2(p, { x: cx, y: cy });
 }
 
-/*
-  strokeHitTest:
-  Checks if point p is within eraserRadius of any part of a stroke.
-  If true, that stroke should be erased.
-*/
 function strokeHitTest(strokePts: Pt[], p: Pt, radius: number) {
+  const r2 = radius * radius;
 
-  const r2 = radius * radius; // squared radius
-
-  // Check every segment in stroke
   for (let i = 1; i < strokePts.length; i++) {
     if (pointToSegDist2(p, strokePts[i - 1], strokePts[i]) <= r2) {
       return true;
     }
   }
 
-  // Also check individual points (extra safety)
   for (const pt of strokePts) {
     if (dist2(p, pt) <= r2) {
       return true;
@@ -223,10 +215,7 @@ export function HandwritingCanvas({
 
   const [layout, setLayout] = useState({ width: 0, height: 0 });
 
-  // Stores SkPath objects for rendering
   const [paths, setPaths] = useState<SkPath[]>([]);
-
-  // Stores raw point arrays aligned with paths
   const [pathsPts, setPathsPts] = useState<Pt[][]>([]);
 
   const [currentPath, setCurrentPath] = useState<SkPath | null>(null);
@@ -247,10 +236,7 @@ export function HandwritingCanvas({
   // Tool ref so the gesture (built once) always sees the current tool value
   const toolRef = useRef<'pen' | 'select'>('pen');
 
-  // Tracks raw points of current gesture
   const pointsRef = useRef<Pt[]>([]);
-
-  // Tracks raw points of current lasso gesture
   const selectPtsRef = useRef<Pt[]>([]);
 
   // True once gesture is classified as scribble
@@ -353,7 +339,6 @@ export function HandwritingCanvas({
     Called repeatedly while scribbling.
   */
   const eraseAt = (p: Pt) => {
-
     const prevPaths = pathsRef.current;
     const prevPts   = pathsPtsRef.current;
 
@@ -385,8 +370,10 @@ export function HandwritingCanvas({
     pushHistoryRef.current();
     pathsRef.current    = [];
     pathsPtsRef.current = [];
+
     setPaths([]);
     setPathsPts([]);
+
     currentPathRef.current = null;
     setCurrentPath(null);
     // After clearing, always return to pen mode
