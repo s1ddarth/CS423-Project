@@ -238,7 +238,6 @@ export function HandwritingCanvas({
   const currentPathRef = useRef<SkPath | null>(null);
 
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
-  const [hasChosenTool, setHasChosenTool] = useState(false);
 
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
   const selectPathRef = useRef<SkPath | null>(null);
@@ -548,10 +547,10 @@ export function HandwritingCanvas({
             const capW = Math.ceil(maxX - minX);
             const capH = Math.ceil(maxY - minY);
 
-            if (capW > 0 && capH > 0) {
+          const API_BASE_URL = 'http://localhost:8000';
+          // const API_BASE_URL = 'http://10.9.183.62:8000';
 
-              // Re-render the strokes to an offscreen surface for the backend
-              const surface = Skia.Surface.Make(capW, capH);
+          if (capW > 0 && capH > 0) {
 
               if (surface) {
                 const offCanvas = surface.getCanvas();
@@ -598,34 +597,103 @@ export function HandwritingCanvas({
                   }
                 })();
               }
+
+              const image = surface.makeImageSnapshot();
+              const base64 = image.encodeToBase64();
+
+              (async () => {
+                try {
+                  const tempPath = FileSystem.cacheDirectory + 'lasso_capture.png';
+                  await FileSystem.writeAsStringAsync(tempPath, base64, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+
+                  const formData = new FormData();
+                  formData.append('image', {
+                    uri: tempPath,
+                    name: 'selection.png',
+                    type: 'image/png',
+                  } as any);
+
+                  const res = await fetch(`${API_BASE_URL}/recognize/upload`, {
+                    method: 'POST',
+                    body: formData,
+                  });
+
+                  const json = await res.json();
+                  console.log('LaTeX:', json.latex);
+                  console.log('JSON:', json);
+                  onRecognize?.(json.latex); // sends it over to index.tsx
+                } catch (err) {
+                  console.error('Recognition failed:', err); // TODO: error message
+                }
+              })();
             }
           }
 
-          // Clear lasso after a short delay so user sees the closed shape
-          setTimeout(() => {
-            setSelectPath(null);
-            selectPathRef.current = null;
-            selectPtsRef.current  = [];
-          }, 400);
-        }
-      });
-  } // panRef built once
+        // Clear lasso after a short delay so user sees the closed shape
+        setTimeout(() => {
+          setSelectPath(null);
+          selectPathRef.current = null;
+          selectPtsRef.current = [];
+        }, 400);
+      }
+    });
+
+  const clearAll = () => {
+    pathsRef.current = [];
+    pathsPtsRef.current = [];
+    setPaths([]);
+    setPathsPts([]);
+    setTool('pen');
+    currentPathRef.current = null;
+    setCurrentPath(null);
+    selectPathRef.current = null;
+    setSelectPath(null);
+    selectPtsRef.current = [];
+    pointsRef.current = [];
+    isErasingRef.current = false;
+  };
 
   return (
     <>
       <View style={styles.toolRow}>
         <Pressable
-          onPress={() => { setTool('pen'); toolRef.current = 'pen'; setHasChosenTool(true); }}
-          style={[styles.toolButton, hasChosenTool && tool === 'pen' && styles.toolButtonActive]}
+          onPress={() => {
+            setTool('pen');
+          }}
+          style={[
+            styles.toolButton,
+            tool === 'pen' && styles.toolButtonActive,
+          ]}
         >
-          <Text style={styles.toolButtonLabel}>Pen</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'pen' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Pen
+          </Text>
         </Pressable>
 
         <Pressable
-          onPress={() => { setTool('select'); toolRef.current = 'select'; setHasChosenTool(true); }}
-          style={[styles.toolButton, hasChosenTool && tool === 'select' && styles.toolButtonActive]}
+          onPress={() => {
+            setTool('select');
+          }}
+          style={[
+            styles.toolButton,
+            tool === 'select' && styles.toolButtonActive,
+          ]}
         >
-          <Text style={styles.toolButtonLabel}>Select</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'select' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Select
+          </Text>
         </Pressable>
 
         <Pressable
@@ -712,7 +780,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5b5b5',
   },
   toolButtonActive: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#007AFF',
   },
   toolButtonDisabled: {
     opacity: 0.35,
@@ -723,5 +791,8 @@ const styles = StyleSheet.create({
   toolButtonLabel: {
     color: '#111',
     fontWeight: '500',
+  },
+  toolButtonLabelActive: {
+    color: '#fff',
   },
 });
