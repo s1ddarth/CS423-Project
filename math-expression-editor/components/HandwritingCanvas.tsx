@@ -1,28 +1,27 @@
 import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@shopify/react-native-skia';
 import * as FileSystem from 'expo-file-system/legacy';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 
 type Pt = { x: number; y: number };
+
+/*
+  HistoryEntry:
+  Snapshot of canvas state for undo/redo.
+  Stores both SkPath[] and Pt[][] together so the eraser
+  still has geometry data after an undo.
+*/
+type HistoryEntry = { paths: SkPath[]; pts: Pt[][] };
+
+function dist(a: Pt, b: Pt) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
 
 function dist2(a: Pt, b: Pt) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return dx * dx + dy * dy;
-}
-
-function convertToPDollar(strokes: Pt[][]) {
-  const pts: any[] = [];
-
-  strokes.forEach((stroke, strokeId) => {
-    stroke.forEach((p) => {
-      pts.push(new Point(p.x, p.y, strokeId));
-    });
-  });
-
-  return pts;
 }
 
 function pointToSegDist2(p: Pt, a: Pt, b: Pt) {
@@ -63,18 +62,84 @@ function strokeHitTest(strokePts: Pt[], p: Pt, radius: number) {
   return false;
 }
 
+/*
+  detectScribble:
+  Determines if a gesture should be treated as an erase scribble.
+
+  A scribble must:
+  - Stay within a relatively small region
+  - Have high total movement (dense motion)
+  - Have many sharp direction changes
+*/
+function detectScribble(pts: Pt[]) {
+
+  // Not enough data to classify
+  if (pts.length < 14) return false;
+
+  let minX = pts[0].x;
+  let maxX = pts[0].x;
+  let minY = pts[0].y;
+  let maxY = pts[0].y;
+
+  let pathLen = 0;
+
+  // Compute bounding box and total path length
+  for (let i = 1; i < pts.length; i++) {
+
+    pathLen += dist(pts[i - 1], pts[i]);
+
+    minX = Math.min(minX, pts[i].x);
+    maxX = Math.max(maxX, pts[i].x);
+    minY = Math.min(minY, pts[i].y);
+    maxY = Math.max(maxY, pts[i].y);
+  }
+
+  const boxW = maxX - minX;
+  const boxH = maxY - minY;
+
+  // If movement spreads too far, it's likely writing not scribble
+  if (boxW > 180 || boxH > 180) return false;
+
+  const dense = pathLen > 520;
+
+  let turns = 0;
+
+  // Count sharp direction changes
+  for (let i = 2; i < pts.length; i++) {
+
+    const a = pts[i - 2];
+    const b = pts[i - 1];
+    const c = pts[i];
+
+    const v1x = b.x - a.x;
+    const v1y = b.y - a.y;
+    const v2x = c.x - b.x;
+    const v2y = c.y - b.y;
+
+    const n1 = Math.hypot(v1x, v1y);
+    const n2 = Math.hypot(v2x, v2y);
+
+    if (n1 < 2 || n2 < 2) continue;
+
+    const cos = (v1x * v2x + v1y * v2y) / (n1 * n2);
+
+    if (cos < 0.5) turns++;
+  }
+
+  return dense && turns >= 6;
+}
+
 export function HandwritingCanvas({
   style,
   strokeColor = '#111',
   strokeWidth = 3,
-  onRecognize,
+  onRecognize, // triggers upon recieving latex from backend
 }: {
   style?: object;
   strokeColor?: string;
   strokeWidth?: number;
   onRecognize?: (latex: string) => void;
 }) {
-  const recognizerRef = useRef(new PDollarRecognizer());
 
   const [layout, setLayout] = useState({ width: 0, height: 0 });
 
@@ -90,34 +155,30 @@ export function HandwritingCanvas({
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
   const selectPathRef = useRef<SkPath | null>(null);
 
+  // Refs ensure erase logic always uses latest arrays
   const pathsRef = useRef<SkPath[]>([]);
   const pathsPtsRef = useRef<Pt[][]>([]);
-  pathsRef.current = paths;
-  pathsPtsRef.current = pathsPts;
+
+  // Tool ref so the gesture (built once) always sees the current tool value
+  const toolRef = useRef<'pen' | 'select'>('pen');
+  useEffect(() => {
+    toolRef.current = tool;
+  }, [tool]);
 
   const pointsRef = useRef<Pt[]>([]);
   const selectPtsRef = useRef<Pt[]>([]);
 
-  const eraserRadius = 28;
-  //const gestureThreshold = 0.55;
-  //const scribbleThreshold = 0.55;
+  // True once gesture is classified as scribble
+  const isErasingRef = useRef(false);
 
-  function strokeBounds(stroke: Pt[]) {
-    let minX = stroke[0].x;
-    let maxX = stroke[0].x;
-    let minY = stroke[0].y;
-    let maxY = stroke[0].y;
+  // Controls how forgiving erase is
+  const eraserRadius = 20;
 
-    for (const p of stroke) {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y);
-      maxY = Math.max(maxY, p.y);
-    }
-
-    return { minX, maxX, minY, maxY };
-  }
-
+  /*
+    eraseAt:
+    Removes strokes that are close to point p.
+    Called repeatedly while scribbling.
+  */
   const eraseAt = (p: Pt) => {
     const prevPaths = pathsRef.current;
     const prevPts = pathsPtsRef.current;
@@ -125,29 +186,15 @@ export function HandwritingCanvas({
     const keepIdx: number[] = [];
 
     for (let i = 0; i < prevPts.length; i++) {
-      const stroke = prevPts[i];
-
-      if (strokeHitTest(stroke, p, eraserRadius)) {
-        continue;
+      if (!strokeHitTest(prevPts[i], p, eraserRadius)) {
+        keepIdx.push(i);
       }
-
-      const b = strokeBounds(stroke);
-
-      if (
-        p.x >= b.minX - eraserRadius &&
-        p.x <= b.maxX + eraserRadius &&
-        p.y >= b.minY - eraserRadius &&
-        p.y <= b.maxY + eraserRadius
-      ) {
-        continue;
-      }
-
-      keepIdx.push(i);
     }
 
     const newPaths = keepIdx.map((i) => prevPaths[i]);
     const newPts = keepIdx.map((i) => prevPts[i]);
 
+    // Update refs immediately so next erase call sees updated data
     pathsRef.current = newPaths;
     pathsPtsRef.current = newPts;
 
@@ -155,12 +202,8 @@ export function HandwritingCanvas({
     setPathsPts(newPts);
   };
 
-  const eraseAlongStroke = (stroke: Pt[]) => {
-    for (let i = 0; i < stroke.length; i++) {
-      eraseAt(stroke[i]);
-    }
-  };
 
+  // Pan gesture handler for drawing strokes or selection boxes
   const pan = Gesture.Pan()
     .minDistance(0)
     .runOnJS(true)
@@ -169,22 +212,44 @@ export function HandwritingCanvas({
       p.moveTo(e.x, e.y);
       p.lineTo(e.x, e.y);
 
+      // Initialize new gesture tracking
       pointsRef.current = [{ x: e.x, y: e.y }];
+      isErasingRef.current = false;
 
-      if (tool === 'pen') {
-        currentPathRef.current = p;
-        setCurrentPath(p.copy());
-      } else {
-        selectPtsRef.current = [{ x: e.x, y: e.y }];
-        selectPathRef.current = p;
-        setSelectPath(p.copy());
-      }
-    })
-    .onUpdate((e) => {
-      if (tool === 'pen') {
-        const pt = { x: e.x, y: e.y };
-        pointsRef.current.push(pt);
+        if (toolRef.current === 'pen') {
+          currentPathRef.current = p;
+          setCurrentPath(p.copy());
+        } else {
+          selectPtsRef.current  = [{ x: e.x, y: e.y }];
+          selectPathRef.current = p;
+          setSelectPath(p.copy());
+        }
+      })
 
+      .onUpdate((e) => {
+        if (toolRef.current === 'pen') {
+          const pt = { x: e.x, y: e.y };
+          pointsRef.current.push(pt);
+
+        // Detect scribble
+        if (!isErasingRef.current && detectScribble(pointsRef.current)) {
+          isErasingRef.current = true;
+          currentPathRef.current = null;
+          setCurrentPath(null);
+        }
+
+        // If scribbling, erase instead of drawing
+        if (isErasingRef.current) {
+          eraseAt(pt);
+
+          const pts = pointsRef.current;
+          for (let i = Math.max(0, pts.length - 10); i < pts.length; i++) {
+            eraseAt(pts[i]);
+          }
+          return;
+        }
+
+        // Normal pen drawing
         const p = currentPathRef.current;
         if (!p) return;
 
@@ -200,29 +265,20 @@ export function HandwritingCanvas({
       }
     })
     .onEnd(() => {
-      if (tool === 'pen') {
-        const strokePts = [...pointsRef.current];
-        const p = currentPathRef.current;
-
-        if (strokePts.length > 1) {
-          const pts = convertToPDollar([strokePts]);
-          const result = recognizerRef.current.Recognize(pts);
-
-          console.log('Name:', result.Name);
-          console.log('Score:', result.Score);
-
-          if (result.Name === 'scribble') {
-            eraseAlongStroke(strokePts);
-            pointsRef.current = [];
-            currentPathRef.current = null;
-            setCurrentPath(null);
-            return;
-          }
+      if (toolRef.current === 'pen') {
+        // If scribble, do not commit stroke
+        if (isErasingRef.current) {
+          isErasingRef.current = false;
+          pointsRef.current = [];
+          currentPathRef.current = null;
+          setCurrentPath(null);
+          return;
         }
 
+        const p = currentPathRef.current;
         if (p) {
           const newPaths = [...pathsRef.current, p];
-          const newPts = [...pathsPtsRef.current, strokePts];
+          const newPts = [...pathsPtsRef.current, [...pointsRef.current]];
 
           pathsRef.current = newPaths;
           pathsPtsRef.current = newPts;
@@ -234,48 +290,42 @@ export function HandwritingCanvas({
         pointsRef.current = [];
         currentPathRef.current = null;
         setCurrentPath(null);
-      } else {
-        const lassoPts = [...selectPtsRef.current];
+      } else { // we gotta close the selection path n send it over to backend now
+        const lassoPts = selectPtsRef.current;
 
+        // omit short shapes
         if (lassoPts.length >= 3) {
-          const gesturePts = convertToPDollar([lassoPts]);
-          const gestureResult = recognizerRef.current.Recognize(gesturePts);
 
-          console.log('Select gesture:', gestureResult.Name);
-          console.log('Select score:', gestureResult.Score);
+          // close it
+          const sp = selectPathRef.current;
+          if (sp) {
+            sp.close();
+            setSelectPath(sp.copy());
+          }
 
-          const isCircle =
-          gestureResult.Name === 'circle'
-
-          if (isCircle) {
-            const sp = selectPathRef.current;
-            if (sp) {
-              sp.close();
-              setSelectPath(sp.copy());
-            }
-
-            let minX = lassoPts[0].x;
-            let maxX = lassoPts[0].x;
-            let minY = lassoPts[0].y;
-            let maxY = lassoPts[0].y;
-
-            for (const pt of lassoPts) {
-              minX = Math.min(minX, pt.x);
-              maxX = Math.max(maxX, pt.x);
-              minY = Math.min(minY, pt.y);
-              maxY = Math.max(maxY, pt.y);
-            }
+          // make it a box 
+          let minX = lassoPts[0].x, maxX = lassoPts[0].x;
+          let minY = lassoPts[0].y, maxY = lassoPts[0].y;
+          for (const pt of lassoPts) {
+            minX = Math.min(minX, pt.x);
+            maxX = Math.max(maxX, pt.x);
+            minY = Math.min(minY, pt.y);
+            maxY = Math.max(maxY, pt.y);
+          }
 
             const capW = Math.ceil(maxX - minX);
             const capH = Math.ceil(maxY - minY);
 
-            if (capW > 0 && capH > 0) {
-              const surface = Skia.Surface.Make(capW, capH);
+          if (capW > 0 && capH > 0) {
 
-              if (surface) {
-                const offCanvas = surface.getCanvas();
-                offCanvas.drawColor(Skia.Color('white'));
-                offCanvas.translate(-minX, -minY);
+            // all this is to re-render the strokes to a surface that we can send to the backend
+            const surface = Skia.Surface.Make(capW, capH);
+
+            if (surface) {
+              const offCanvas = surface.getCanvas();
+              offCanvas.drawColor(Skia.Color('white'));
+
+              offCanvas.translate(-minX, -minY);
 
                 const paint = Skia.Paint();
                 paint.setStyle(PaintStyle.Stroke);
@@ -288,44 +338,41 @@ export function HandwritingCanvas({
                   offCanvas.drawPath(path, paint);
                 }
 
-                const image = surface.makeImageSnapshot();
-                const base64 = image.encodeToBase64();
+              const image = surface.makeImageSnapshot();
+              const base64 = image.encodeToBase64();
 
-                (async () => {
-                  try {
-                    const tempPath = FileSystem.cacheDirectory + 'lasso_capture.png';
+              (async () => {
+                try {
+                  const tempPath = FileSystem.cacheDirectory + 'lasso_capture.png';
+                  await FileSystem.writeAsStringAsync(tempPath, base64, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
 
-                    await FileSystem.writeAsStringAsync(tempPath, base64, {
-                      encoding: FileSystem.EncodingType.Base64,
-                    });
+                  const formData = new FormData();
+                  formData.append('image', {
+                    uri: tempPath,
+                    name: 'selection.png',
+                    type: 'image/png',
+                  } as any);
 
-                    const formData = new FormData();
-                    formData.append(
-                      'image',
-                      {
-                        uri: tempPath,
-                        name: 'selection.png',
-                        type: 'image/png',
-                      } as any
-                    );
+                  const res = await fetch('http://10.55.222.169:8000/recognize/upload', { // or whatever the ip is of ur backend
+                    method: 'POST',
+                    body: formData,
+                  });
 
-                    const res = await fetch('http://127.0.0.1:8000/recognize/upload', {
-                      method: 'POST',
-                      body: formData,
-                    });
-
-                    const json = await res.json();
-                    console.log('LaTeX:', json.latex);
-                    onRecognize?.(json.latex);
-                  } catch (err) {
-                    console.error('Recognition failed:', err);
-                  }
-                })();
-              }
+                  const json = await res.json();
+                  console.log('LaTeX:', json.latex);
+                  console.log('JSON:', json);
+                  onRecognize?.(json.latex); // sends it over to index.tsx
+                } catch (err) {
+                  console.error('Recognition failed:', err); // TODO: error message
+                }
+              })();
             }
           }
         }
 
+        // Clear lasso after a short delay so user sees the closed shape
         setTimeout(() => {
           setSelectPath(null);
           selectPathRef.current = null;
@@ -337,18 +384,15 @@ export function HandwritingCanvas({
   const clearAll = () => {
     pathsRef.current = [];
     pathsPtsRef.current = [];
-
     setPaths([]);
     setPathsPts([]);
-
     currentPathRef.current = null;
     setCurrentPath(null);
-
     selectPathRef.current = null;
     setSelectPath(null);
-
     selectPtsRef.current = [];
     pointsRef.current = [];
+    isErasingRef.current = false;
   };
 
   return (
@@ -359,7 +403,10 @@ export function HandwritingCanvas({
             setTool('pen');
             setHasChosenTool(true);
           }}
-          style={[styles.toolButton, hasChosenTool && tool === 'pen' && styles.toolButtonActive]}
+          style={[
+            styles.toolButton,
+            hasChosenTool && tool === 'pen' && styles.toolButtonActive,
+          ]}
         >
           <Text style={styles.toolButtonLabel}>Pen</Text>
         </Pressable>
@@ -369,7 +416,10 @@ export function HandwritingCanvas({
             setTool('select');
             setHasChosenTool(true);
           }}
-          style={[styles.toolButton, hasChosenTool && tool === 'select' && styles.toolButtonActive]}
+          style={[
+            styles.toolButton,
+            hasChosenTool && tool === 'select' && styles.toolButtonActive,
+          ]}
         >
           <Text style={styles.toolButtonLabel}>Select</Text>
         </Pressable>
@@ -378,7 +428,6 @@ export function HandwritingCanvas({
           <Text style={styles.toolButtonLabel}>Clear</Text>
         </Pressable>
       </View>
-
       <GestureDetector gesture={pan}>
         <View style={[styles.canvas, style]} onLayout={(e) => setLayout(e.nativeEvent.layout)}>
           {layout.width > 0 && layout.height > 0 && (
@@ -426,9 +475,26 @@ export function HandwritingCanvas({
 
 const styles = StyleSheet.create({
   canvas: { flex: 1, backgroundColor: '#fff', borderRadius: 8 },
-  toolRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 8 },
-  toolButton: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 6, backgroundColor: '#C0C0C0' },
-  clearButton: { backgroundColor: '#f5b5b5' },
-  toolButtonActive: { backgroundColor: '#E0E0E0' },
-  toolButtonLabel: { color: '#111', fontWeight: '500' },
+  toolRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  toolButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#C0C0C0',
+  },
+  clearButton: {
+    backgroundColor: '#f5b5b5',
+  },
+  toolButtonActive: {
+    backgroundColor: '#E0E0E0',
+  },
+  toolButtonLabel: {
+    color: '#111',
+    fontWeight: '500',
+  },
 });
