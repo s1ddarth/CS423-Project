@@ -3,13 +3,8 @@ import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
-/*
-  BACKEND_URL:
-  The endpoint for the handwriting recognition backend.
-  Update this to your Mac's current IP (ipconfig getifaddr en0) when it changes.
-  This is the only line you need to touch when switching networks.
-*/
-const BACKEND_URL = 'http://10.201.0.55:8000/recognize/upload';
+// const BACKEND_URL = 'http://10.201.0.55:8000/recognize/upload';
+const BACKEND_URL = 'http://localhost:8000/recognize/upload';
 
 /*
   Pt represents a raw finger coordinate.
@@ -394,6 +389,9 @@ export function HandwritingCanvas({
     setPathsPts([]);
     currentPathRef.current = null;
     setCurrentPath(null);
+    // After clearing, always return to pen mode
+    setTool('pen');
+    toolRef.current = 'pen';
     selectPathRef.current  = null;
     setSelectPath(null);
     selectPtsRef.current   = [];
@@ -606,6 +604,10 @@ export function HandwritingCanvas({
             selectPathRef.current = null;
             selectPtsRef.current  = [];
           }, 400);
+
+          // After a completed selection, return to pen mode
+          setTool('pen');
+          toolRef.current = 'pen';
         }
       });
   } // panRef built once
@@ -614,8 +616,8 @@ export function HandwritingCanvas({
     <>
       <View style={styles.toolRow}>
         <Pressable
-          onPress={() => { setTool('pen'); toolRef.current = 'pen'; setHasChosenTool(true); }}
-          style={[styles.toolButton, hasChosenTool && tool === 'pen' && styles.toolButtonActive]}
+          onPress={() => { setTool('pen'); toolRef.current = 'pen'; }}
+          style={[styles.toolButton, tool === 'pen' && styles.toolButtonActive]}
         >
           <Text
             style={[
@@ -628,8 +630,8 @@ export function HandwritingCanvas({
         </Pressable>
 
         <Pressable
-          onPress={() => { setTool('select'); toolRef.current = 'select'; setHasChosenTool(true); }}
-          style={[styles.toolButton, hasChosenTool && tool === 'select' && styles.toolButtonActive]}
+          onPress={() => { setTool('select'); toolRef.current = 'select'; }}
+          style={[styles.toolButton, tool === 'select' && styles.toolButtonActive]}
         >
           <Text
             style={[
