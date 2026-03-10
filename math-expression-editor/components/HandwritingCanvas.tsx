@@ -4,8 +4,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 
-// const BACKEND_URL = 'http://10.201.0.55:8000/recognize/upload';
-const BACKEND_URL = 'http://localhost:8000/recognize/upload';
+const BASE_URL = 'http://localhost:8000';
+// const BASE_URL = 'http://10.201.0.55:8000';
+
+const BACKEND_URL = `${BASE_URL}/recognize/upload`;
 
 /*
   Pt represents a raw finger coordinate.
