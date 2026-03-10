@@ -4,8 +4,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 
-// const BACKEND_URL = 'http://10.201.0.55:8000/recognize/upload';
-const BACKEND_URL = 'http://localhost:8000/recognize/upload';
+const BASE_URL = 'http://localhost:8000';
+// const BASE_URL = 'http://10.201.0.55:8000';
+
+const BACKEND_URL = `${BASE_URL}/recognize/upload`;
 
 /*
   Pt represents a raw finger coordinate.
@@ -204,11 +206,17 @@ export function HandwritingCanvas({
   strokeColor = '#111',
   strokeWidth = 3,
   onRecognize, // triggers upon receiving latex from backend
+  onUndo,
+  onRedo,
+  onClearAll,
 }: {
   style?: object;
   strokeColor?: string;
   strokeWidth?: number;
   onRecognize?: (latex: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onClearAll?: () => void;
 }) {
   "use no memo"; // disable React Compiler — it rebuilds Gesture.Pan() mid-stroke
                  // which fires a second onBegin and resets the active stroke
@@ -251,6 +259,10 @@ export function HandwritingCanvas({
   const undoStack = useRef<HistoryEntry[]>([]);
   const redoStack = useRef<HistoryEntry[]>([]);
 
+  // Stack to store both canvas strokes and LaTeX actions
+  const actionStackRef     = useRef<Array<'canvas' | 'latex'>>([]);
+  const redoActionStackRef = useRef<Array<'canvas' | 'latex'>>([]);
+
   // Drive the enabled/disabled state of the toolbar buttons
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -264,8 +276,8 @@ export function HandwritingCanvas({
     Called after every push/pop so the toolbar stays in sync.
   */
   const syncButtons = () => {
-    setCanUndo(undoStack.current.length > 0);
-    setCanRedo(redoStack.current.length > 0);
+    setCanUndo(actionStackRef.current.length > 0);
+    setCanRedo(redoActionStackRef.current.length > 0);
   };
 
   /*
@@ -279,6 +291,8 @@ export function HandwritingCanvas({
       pts:   pathsPtsRef.current.map(a => [...a]),
     });
     redoStack.current = [];
+    actionStackRef.current.push('canvas');
+    redoActionStackRef.current = [];
     syncButtons();
   }, []);
 
@@ -299,30 +313,55 @@ export function HandwritingCanvas({
     Pops the undo stack, pushes current state to redo, restores previous state.
   */
   const undo = useCallback(() => {
-    if (!undoStack.current.length) return;
-    const prev = undoStack.current.pop()!;
-    redoStack.current.push({
-      paths: [...pathsRef.current],
-      pts:   pathsPtsRef.current.map(a => [...a]),
-    });
-    applyEntry(prev);
+    if (!actionStackRef.current.length) return;
+
+    const kind = actionStackRef.current.pop()!;
+
+    if (kind === 'canvas') {
+      if (!undoStack.current.length) {
+        syncButtons();
+        return;
+      }
+      const prev = undoStack.current.pop()!;
+      redoStack.current.push({
+        paths: [...pathsRef.current],
+        pts:   pathsPtsRef.current.map(a => [...a]),
+      });
+      applyEntry(prev);
+    } else {
+      onUndo?.();
+    }
+
+    redoActionStackRef.current.push(kind);
     syncButtons();
-  }, [applyEntry]);
+  }, [applyEntry, onUndo]);
 
   /*
     redo:
     Pops the redo stack, pushes current state to undo, restores next state.
   */
   const redo = useCallback(() => {
-    if (!redoStack.current.length) return;
-    const next = redoStack.current.pop()!;
-    undoStack.current.push({
-      paths: [...pathsRef.current],
-      pts:   pathsPtsRef.current.map(a => [...a]),
-    });
-    applyEntry(next);
+    if (!redoActionStackRef.current.length) return;
+
+    const kind = redoActionStackRef.current.pop()!;
+
+    if (kind === 'canvas') {
+      if (!redoStack.current.length) {
+        syncButtons();
+        return;
+      }
+      const next = redoStack.current.pop()!;
+      undoStack.current.push({
+        paths: [...pathsRef.current],
+        pts:   pathsPtsRef.current.map(a => [...a]),
+      });
+      applyEntry(next);
+    } 
+    else onRedo?.();
+
+    actionStackRef.current.push(kind);
     syncButtons();
-  }, [applyEntry]);
+  }, [applyEntry, onRedo]);
 
   // Stable refs so the gesture object (built once at mount) always calls
   // the latest versions of undo/redo/pushHistory without needing to rebuild.
@@ -384,6 +423,7 @@ export function HandwritingCanvas({
     selectPtsRef.current   = [];
     pointsRef.current      = [];
     isErasingRef.current   = false;
+    onClearAll?.();
   };
 
   /*
@@ -577,6 +617,10 @@ export function HandwritingCanvas({
                     const json = await res.json();
                     console.log('LaTeX:', json.latex);
                     onRecognize?.(json.latex); // sends it over to index.tsx
+                    // LaTeX recognition is a separate logical action
+                    actionStackRef.current.push('latex');
+                    redoActionStackRef.current = [];
+                    syncButtons();
                   } catch (err) {
                     console.error('Recognition failed:', err); // TODO: error message in UI
                   }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
@@ -49,6 +49,49 @@ function buildKatexHtml(latex: string) {
 
 export default function HomeScreen() {
   const [latex, setLatex] = useState<string | null>(null);
+
+  // Keep LaTeX history in sync with canvas undo/redo
+  const latexUndoStack = useRef<(string | null)[]>([]);
+  const latexRedoStack = useRef<(string | null)[]>([]);
+
+  const pushLatexHistory = (next: string | null, prev: string | null) => {
+    latexUndoStack.current.push(prev);
+    latexRedoStack.current = [];
+    return next;
+  };
+
+  const handleRecognize = (newLatex: string) => {
+    const clean = stripMathDelimiters(newLatex);
+    setLatex((prev) =>
+      pushLatexHistory(prev ? `${prev} \\\\ ${clean}` : clean, prev)
+    );
+  };
+
+  const handleUndoLatex = () => {
+    setLatex((current) => {
+      if (!latexUndoStack.current.length) return current;
+      const previous = latexUndoStack.current.pop() ?? null;
+      latexRedoStack.current.push(current ?? null);
+      return previous;
+    });
+  };
+
+  const handleRedoLatex = () => {
+    setLatex((current) => {
+      if (!latexRedoStack.current.length) return current;
+      const next = latexRedoStack.current.pop() ?? null;
+      latexUndoStack.current.push(current ?? null);
+      return next;
+    });
+  };
+
+  const handleClearLatex = () => {
+    // Clear LaTeX preview without adding to its own history;
+    // canvas clear is treated as a canvas-only action in the
+    // shared undo stack.
+    setLatex(null);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
       
@@ -89,10 +132,10 @@ export default function HomeScreen() {
           strokeColor="black"
           strokeWidth={3}
           style={styles.canvas}
-          onRecognize={(newLatex) => {
-            const clean = stripMathDelimiters(newLatex);
-            setLatex((prev) => (prev ? `${prev} \\\\ ${clean}` : clean));
-          }}
+          onRecognize={handleRecognize}
+          onUndo={handleUndoLatex}
+          onRedo={handleRedoLatex}
+          onClearAll={handleClearLatex}
           />
         </View>
       </View>
