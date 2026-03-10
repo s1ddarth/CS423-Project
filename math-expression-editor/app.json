@@ -6,10 +6,15 @@
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "mathexpressioneditor",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      },
+      "bundleIdentifier": "com.anonymous.math-expression-editor"
     },
     "android": {
       "adaptiveIcon": {
