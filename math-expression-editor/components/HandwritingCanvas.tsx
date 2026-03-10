@@ -238,7 +238,6 @@ export function HandwritingCanvas({
   const currentPathRef = useRef<SkPath | null>(null);
 
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
-  const [hasChosenTool, setHasChosenTool] = useState(false);
 
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
   const selectPathRef = useRef<SkPath | null>(null);
@@ -618,14 +617,28 @@ export function HandwritingCanvas({
           onPress={() => { setTool('pen'); toolRef.current = 'pen'; setHasChosenTool(true); }}
           style={[styles.toolButton, hasChosenTool && tool === 'pen' && styles.toolButtonActive]}
         >
-          <Text style={styles.toolButtonLabel}>Pen</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'pen' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Pen
+          </Text>
         </Pressable>
 
         <Pressable
           onPress={() => { setTool('select'); toolRef.current = 'select'; setHasChosenTool(true); }}
           style={[styles.toolButton, hasChosenTool && tool === 'select' && styles.toolButtonActive]}
         >
-          <Text style={styles.toolButtonLabel}>Select</Text>
+          <Text
+            style={[
+              styles.toolButtonLabel,
+              tool === 'select' && styles.toolButtonLabelActive,
+            ]}
+          >
+            Select
+          </Text>
         </Pressable>
 
         <Pressable
@@ -712,7 +725,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5b5b5',
   },
   toolButtonActive: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#007AFF',
   },
   toolButtonDisabled: {
     opacity: 0.35,
@@ -723,5 +736,8 @@ const styles = StyleSheet.create({
   toolButtonLabel: {
     color: '#111',
     fontWeight: '500',
+  },
+  toolButtonLabelActive: {
+    color: '#fff',
   },
 });
