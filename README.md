@@ -1,66 +1,73 @@
-# Setup & Run
+## Math Expression Editor
 
-> NOTE: Run the backend, change the IP address in HandwritingCanvas.tsx to the IP address of your backend in order to access the recognizer server from Expo Go
+### Prerequisites
 
-## Frontend
-1. Install dependencies
+- **Node.js & npm**: Install the latest LTS version from the official Node.js site (https://nodejs.org/).
+- **Python 3.10+**: Required for the FastAPI backend.
+- **Expo CLI**:
 
-   ```bash
-   npm install
-   ```
+  ```bash
+  npm install -g expo
+  ```
 
-2. Start the app
+### Install frontend dependencies
 
-   ```bash
-   npx expo start
-   ```
-
-## Backend 
-
-### Requirements
-
-See **requirements.txt**
-
-### Setup
-
-From the **project root**:
+From the `math-expression-editor` directory:
 
 ```bash
-python3.12 -m venv math-editor-venv
-source math-editor-venv/bin/activate 
-pip install -r backend/requirements.txt
+npm install
 ```
 
-### Run
+### Run the frontend (Expo app)
 
-From the **project root**:
+From the `math-expression-editor` directory:
 
 ```bash
-source math-editor-venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+npx expo start
 ```
 
-- API: http://localhost:8000 
-- Health (GET): http://localhost:8000/health
-- Upload Image (POST): http://localhost:8000/recognize/upload
-- **Interactive API docs (i highly recommend this when trying it out):** http://localhost:8000/docs — view and try the API from the browser.
+Then follow the Expo instructions to open the app on:
 
----
+- **iOS/Android device**: Use the Expo app / platform-specific instructions. 
+- **iOS simulator**: Use the Expo CLI, and press i. There are specific instructions here: https://docs.expo.dev/get-started/set-up-your-environment/?platform=ios&device=simulated 
 
-### Test image upload
-#### Postman
+### Install backend dependencies
 
-1. Set **Method** to **POST** 
-2. Set **URL** to `http://localhost:8000/recognize/upload`.
-3. Open the **Body** tab -> select **form-data**.
-4. Add a row: **Key** = `image`, change the type to **File** (dropdown on the right), then click **Select Files** and pick an image.
-5. Click **Send**. You should get a 200 response with JSON like `{"latex": "..."}`.
+From the `math-expression-editor/backend` directory:
 
-To copy the full request: **Code** (</>) → **cURL** → **Copy**.
-
-#### Terminal
 ```bash
-curl --location 'http://localhost:8000/recognize/upload' \
---form 'image=@"/path/to/your/image.png"'
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Run the backend server
+
+From the `math-expression-editor/backend` directory (with the virtual environment activated):
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The backend will now be available at `http://<your-ip>:8000`.
+
+### Point the frontend to your backend
+
+The frontend sends handwriting images to the backend from `components/HandwritingCanvas.tsx`. Update the `BASE_URL` constant to match where your backend is running:
+
+```ts
+const BASE_URL = 'http://<your-ip>:8000';
+// const BASE_URL = 'http://10.201.0.55:8000';
+```
+
+For local development on the same machine (i.e. if using the simulator), you can keep:
+
+```ts
+const BASE_URL = 'http://localhost:8000';
+```
+
+If you run the backend on a physical device using Expo Go, replace `localhost` with that machine's IP address on your network. On macOS, you can do this by running the following command on the Terminal:
+
+```bash
+ipconfig getifaddr en0
 ```
