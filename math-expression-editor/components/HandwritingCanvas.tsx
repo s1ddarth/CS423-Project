@@ -2,11 +2,11 @@ import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 import { ArrowPoint, ArrowRecognizer } from '../recognizer/pdollar-arrows';
-import { PDollarRecognizer, Point } from '../recognizer/pdollar'; 
 
 // const BASE_URL = 'http://localhost:8000';
-const BASE_URL = 'http://127.0.0.1:8000';
+const BASE_URL = 'http://10.0.0.81:8000';
 
 const BACKEND_URL = `${BASE_URL}/recognize/upload`;
 
@@ -878,6 +878,9 @@ export function HandwritingCanvas({
           )}
         </View>
       </GestureDetector>
+      <Text style={styles.hint}>
+        draw right arrow for undo, left arrow for redo{"\n"}scribble to erase
+      </Text>
     </>
   );
 }
@@ -914,5 +917,11 @@ const styles = StyleSheet.create({
   },
   toolButtonLabelActive: {
     color: '#fff',
+  },
+  hint: {
+    textAlign: 'center',
+    color: '#888',
+    fontSize: 11,
+    marginTop: 6,
   },
 });
