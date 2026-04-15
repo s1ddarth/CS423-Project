@@ -446,11 +446,11 @@ export function HandwritingCanvas({
         eraseSnapshotTaken.current = false;
 
         if (toolRef.current === 'pen') {
-          // Cancel the pending timer — new stroke may extend the same arrow gesture
-          if (gestureTimerRef.current !== null) {
-            clearTimeout(gestureTimerRef.current);
-            gestureTimerRef.current = null;
-          }
+          // // Cancel the pending timer — new stroke may extend the same arrow gesture
+          // if (gestureTimerRef.current !== null) {
+          //   clearTimeout(gestureTimerRef.current);
+          //   gestureTimerRef.current = null;
+          // }
           currentPathRef.current = p;
           setCurrentPath(p.copy());
         } else {
@@ -478,15 +478,15 @@ export function HandwritingCanvas({
             currentPathRef.current = null;
             setCurrentPath(null);
 
-            if (gestureTimerRef.current !== null) {
-              clearTimeout(gestureTimerRef.current);
-              gestureTimerRef.current   = null;
-              gestureStrokesRef.current = [];
-              if (pendingPathsRef.current.length > 0) {
-                pendingPathsRef.current = [];
-                setPendingPaths([]);
-              }
-            }
+            // if (gestureTimerRef.current !== null) {
+            //   clearTimeout(gestureTimerRef.current);
+            //   gestureTimerRef.current   = null;
+            //   gestureStrokesRef.current = [];
+            //   if (pendingPathsRef.current.length > 0) {
+            //     pendingPathsRef.current = [];
+            //     setPendingPaths([]);
+            //   }
+            // }
           }
         }
 
@@ -583,12 +583,7 @@ export function HandwritingCanvas({
             }
             const notWavy = yRevs <= 3 || (yRevs === 4 && arrowhead);
 
-            const looksLikeArrow = w > 75
-              && w > h
-              && netDisplacementRatio > 0.4
-              && arcToChord < 3.5
-              && comeBackOK
-              && notWavy;
+            const looksLikeArrow = true;
             
             // Logs to see the arrows if they go haywire
             
@@ -605,40 +600,57 @@ export function HandwritingCanvas({
             // );
 
             if (looksLikeArrow) {
-              gestureStrokesRef.current.push([...pts]);
-              pendingPathsRef.current.push(committed);
-              setPendingPaths([...pendingPathsRef.current]);
+              // Run arrow recognizer immediately — no buffering or delay
+              const result = arrowRecognizerRef.current.Recognize(convertToArrowPDollar([[...pts]]));
+              if (result.Name === 'arrow-left') {
+                pointsRef.current      = [];
+                currentPathRef.current = null;
+                setCurrentPath(null);
+                undoRef.current();
+                return;
+              }
+              if (result.Name === 'arrow-right') {
+                pointsRef.current      = [];
+                currentPathRef.current = null;
+                setCurrentPath(null);
+                redoRef.current();
+                return;
+              }
+              // Not an arrow — fall through to commit as a normal stroke
 
-              pointsRef.current      = [];
-              currentPathRef.current = null;
-              setCurrentPath(null);
-
-              if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
-              gestureTimerRef.current = setTimeout(() => {
-                finalizeArrowGestureRef.current();
-              }, GESTURE_TIMEOUT_MS);
-              return;
+              // ── Old buffered approach (commented out) ──────────────────────
+              // gestureStrokesRef.current.push([...pts]);
+              // pendingPathsRef.current.push(committed);
+              // setPendingPaths([...pendingPathsRef.current]);
+              // pointsRef.current      = [];
+              // currentPathRef.current = null;
+              // setCurrentPath(null);
+              // if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
+              // gestureTimerRef.current = setTimeout(() => {
+              //   finalizeArrowGestureRef.current();
+              // }, GESTURE_TIMEOUT_MS);
+              // return;
             }
 
-            // Normal stroke — flush any held arrow strokes first so ordering stays correct
-            if (pendingPathsRef.current.length > 0) {
-              if (gestureTimerRef.current !== null) {
-                clearTimeout(gestureTimerRef.current);
-                gestureTimerRef.current = null;
-              }
-              const heldStrokes = gestureStrokesRef.current;
-              const heldPaths   = pendingPathsRef.current;
-              gestureStrokesRef.current = [];
-              pendingPathsRef.current   = [];
-              setPendingPaths([]);
-              for (let i = 0; i < heldStrokes.length; i++) {
-                pushHistoryRef.current();
-                const np  = [...pathsRef.current, heldPaths[i]];
-                const npt = [...pathsPtsRef.current, [...heldStrokes[i]]];
-                pathsRef.current    = np;
-                pathsPtsRef.current = npt;
-              }
-            }
+            // // Normal stroke — flush any held arrow strokes first so ordering stays correct
+            // if (pendingPathsRef.current.length > 0) {
+            //   if (gestureTimerRef.current !== null) {
+            //     clearTimeout(gestureTimerRef.current);
+            //     gestureTimerRef.current = null;
+            //   }
+            //   const heldStrokes = gestureStrokesRef.current;
+            //   const heldPaths   = pendingPathsRef.current;
+            //   gestureStrokesRef.current = [];
+            //   pendingPathsRef.current   = [];
+            //   setPendingPaths([]);
+            //   for (let i = 0; i < heldStrokes.length; i++) {
+            //     pushHistoryRef.current();
+            //     const np  = [...pathsRef.current, heldPaths[i]];
+            //     const npt = [...pathsPtsRef.current, [...heldStrokes[i]]];
+            //     pathsRef.current    = np;
+            //     pathsPtsRef.current = npt;
+            //   }
+            // }
 
             pushHistoryRef.current();
             const newPaths = [...pathsRef.current, committed];
@@ -652,10 +664,10 @@ export function HandwritingCanvas({
             currentPathRef.current = null;
             setCurrentPath(null);
 
-            if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
-            gestureTimerRef.current = setTimeout(() => {
-              finalizeArrowGestureRef.current();
-            }, GESTURE_TIMEOUT_MS);
+            // if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
+            // gestureTimerRef.current = setTimeout(() => {
+            //   finalizeArrowGestureRef.current();
+            // }, GESTURE_TIMEOUT_MS);
             return;
           }
 
@@ -852,7 +864,7 @@ export function HandwritingCanvas({
               )}
 
               {/* Grey preview of strokes held in the arrow gesture buffer */}
-              {pendingPaths.map((d, i) => (
+              {/* pendingPaths.map((d, i) => (
                 <Path
                   key={`pending-${i}`}
                   path={d}
@@ -862,7 +874,7 @@ export function HandwritingCanvas({
                   strokeCap="round"
                   color="#aaaaaa"
                 />
-              ))}
+              )) */}
 
               {selectPath && (
                 <Path
