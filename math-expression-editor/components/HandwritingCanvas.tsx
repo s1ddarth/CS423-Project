@@ -1,13 +1,21 @@
 import { Canvas, PaintStyle, Path, Skia, SkPath, StrokeCap, StrokeJoin } from '@shopify/react-native-skia';
-import React, { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { PDollarRecognizer, Point } from '../recognizer/pdollar';
+import { ArrowPoint, ArrowRecognizer } from '../recognizer/pdollar-arrows';
 
-const BASE_URL = 'http://localhost:8000';
-// const BASE_URL = 'http://10.201.0.55:8000';
+// const BASE_URL = 'http://localhost:8000';
+const BASE_URL = 'http://10.0.0.81:8000';
 
 const BACKEND_URL = `${BASE_URL}/recognize/upload`;
+
+/*
+  How long to wait after the last stroke lifts before running arrow recognition.
+  If the user puts their finger down again within this window the new stroke
+  joins the same gesture rather than starting a new one.
+*/
+const GESTURE_TIMEOUT_MS = 500;
 
 /*
   Pt represents a raw finger coordinate.
@@ -45,12 +53,12 @@ function dist2(a: Pt, b: Pt) {
   return dx * dx + dy * dy;
 }
 
-function convertToPDollar(strokes: Pt[][]) {
+function convertToArrowPDollar(strokes: Pt[][]) {
   const pts: any[] = [];
 
   strokes.forEach((stroke, strokeId) => {
     stroke.forEach((p) => {
-      pts.push(new Point(p.x, p.y, strokeId));
+      pts.push(new ArrowPoint(p.x, p.y, strokeId));
     });
   });
 
@@ -95,110 +103,38 @@ function strokeHitTest(strokePts: Pt[], p: Pt, radius: number) {
   return false;
 }
 
-/*
-  detectScribble:
-  Determines if a gesture should be treated as an erase scribble.
 
-  A scribble must:
-  - Stay within a relatively small region
-  - Have high total movement (dense motion)
-  - Have many sharp direction changes
-*/
-function detectScribble(pts: Pt[]) {
-
-  // Not enough data to classify
-  if (pts.length < 14) return false;
-
-  let minX = pts[0].x;
-  let maxX = pts[0].x;
-  let minY = pts[0].y;
-  let maxY = pts[0].y;
-
-  let pathLen = 0;
-
-  // Compute bounding box and total path length
-  for (let i = 1; i < pts.length; i++) {
-
-    pathLen += dist(pts[i - 1], pts[i]);
-
-    minX = Math.min(minX, pts[i].x);
-    maxX = Math.max(maxX, pts[i].x);
-    minY = Math.min(minY, pts[i].y);
-    maxY = Math.max(maxY, pts[i].y);
-  }
-
-  const boxW = maxX - minX;
-  const boxH = maxY - minY;
-
-  // If movement spreads too far, it's likely writing not scribble
-  if (boxW > 180 || boxH > 180) return false;
-
-  const dense = pathLen > 520;
-
-  let turns = 0;
-
-  // Count sharp direction changes
-  for (let i = 2; i < pts.length; i++) {
-
-    const a = pts[i - 2];
-    const b = pts[i - 1];
-    const c = pts[i];
-
-    const v1x = b.x - a.x;
-    const v1y = b.y - a.y;
-    const v2x = c.x - b.x;
-    const v2y = c.y - b.y;
-
-    const n1 = Math.hypot(v1x, v1y);
-    const n2 = Math.hypot(v2x, v2y);
-
-    if (n1 < 2 || n2 < 2) continue;
-
-    const cos = (v1x * v2x + v1y * v2y) / (n1 * n2);
-
-    if (cos < 0.5) turns++;
-  }
-
-  return dense && turns >= 6;
-}
 
 /*
-  classifySwipe:
-  Returns "undo" | "redo" | null.
-
-  Four guards eliminate false positives from normal writing strokes:
-    1. Net horizontal span >= 90px         — eliminates short strokes
-    2. Vertical drift < 40% of horizontal  — eliminates diagonal letters
-    3. Arc/displacement ratio < 1.4        — eliminates curves like 'c', 'u'
-    4. Point density < 0.45 pts/px         — eliminates slow deliberate lines
-
-  Left swipe → undo, right swipe → redo.
+  hasArrowhead detects a direction reversal measured over a window of points
+  rather than adjacent pairs (touchscreen data is too smooth for that).
+  Only used in the debug log — remove along with the log once tuning is done.
 */
-function classifySwipe(pts: Pt[]): 'undo' | 'redo' | null {
+function hasArrowhead(pts: Pt[]): boolean {
+  if (pts.length < 6) return false;
 
-  // Not enough points to classify
-  if (pts.length < 5) return null;
+  const W             = Math.max(2, Math.floor(pts.length / 8));
+  const THRESHOLD_COS = Math.cos((20 * Math.PI) / 180);
 
-  const netDx    = pts[pts.length - 1].x - pts[0].x;
-  const netDy    = pts[pts.length - 1].y - pts[0].y;
-  const absNetDx = Math.abs(netDx);
+  let sharpestCos = 1.0;
+  let kinkCount   = 0;
 
-  // Guard 1: must travel far enough horizontally
-  if (absNetDx < 90) return null;
+  for (let i = W; i < pts.length - W; i++) {
+    const ax = pts[i].x - pts[i - W].x;
+    const ay = pts[i].y - pts[i - W].y;
+    const bx = pts[i + W].x - pts[i].x;
+    const by = pts[i + W].y - pts[i].y;
+    const na = Math.hypot(ax, ay);
+    const nb = Math.hypot(bx, by);
+    if (na < 4 || nb < 4) continue;
+    const cosAngle = (ax * bx + ay * by) / (na * nb);
+    if (cosAngle < sharpestCos) sharpestCos = cosAngle;
+    if (cosAngle < THRESHOLD_COS) kinkCount++;
+  }
 
-  // Guard 2: must not drift too far vertically
-  if (Math.abs(netDy) > absNetDx * 0.4) return null;
-
-  let arcLen = 0;
-  for (let i = 1; i < pts.length; i++) arcLen += dist(pts[i - 1], pts[i]);
-
-  // Guard 3: arc must be close to a straight line
-  if (arcLen > absNetDx * 1.4) return null;
-
-  // Guard 4: must be a fast gesture, not a slow deliberate stroke
-  if (pts.length / arcLen > 0.45) return null;
-
-  return netDx < 0 ? 'undo' : 'redo';
+  if (sharpestCos >= THRESHOLD_COS) return false;
+  if (kinkCount > 4 * W) return false;
+  return true;
 }
 
 export function HandwritingCanvas({
@@ -229,6 +165,8 @@ export function HandwritingCanvas({
   const [currentPath, setCurrentPath] = useState<SkPath | null>(null);
   const currentPathRef = useRef<SkPath | null>(null);
 
+  const [pendingPaths, setPendingPaths] = useState<SkPath[]>([]);
+
   const [tool, setTool] = useState<'pen' | 'select'>('pen');
 
   const [selectPath, setSelectPath] = useState<SkPath | null>(null);
@@ -244,7 +182,7 @@ export function HandwritingCanvas({
   // Tool ref so the gesture (built once) always sees the current tool value
   const toolRef = useRef<'pen' | 'select'>('pen');
 
-  const pointsRef = useRef<Pt[]>([]);
+  const pointsRef    = useRef<Pt[]>([]);
   const selectPtsRef = useRef<Pt[]>([]);
 
   // True once gesture is classified as scribble
@@ -252,6 +190,13 @@ export function HandwritingCanvas({
 
   // Controls how forgiving erase is
   const eraserRadius = 20;
+
+  const arrowRecognizerRef = useRef<any>(new ArrowRecognizer());
+  const scribbleRecognizerRef = useRef<any>(new PDollarRecognizer());
+  // Arrow gesture buffer
+  const gestureStrokesRef = useRef<Pt[][]>([]);
+  const pendingPathsRef   = useRef<SkPath[]>([]);
+  const gestureTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Undo / redo ────────────────────────────────────────────────────────────
 
@@ -417,14 +362,67 @@ export function HandwritingCanvas({
     setCurrentPath(null);
     // After clearing, always return to pen mode
     setTool('pen');
-    toolRef.current = 'pen';
+    toolRef.current        = 'pen';
     selectPathRef.current  = null;
     setSelectPath(null);
     selectPtsRef.current   = [];
     pointsRef.current      = [];
     isErasingRef.current   = false;
+    if (gestureTimerRef.current !== null) {
+      clearTimeout(gestureTimerRef.current);
+      gestureTimerRef.current = null;
+    }
+    gestureStrokesRef.current = [];
+    pendingPathsRef.current   = [];
+    setPendingPaths([]);
     onClearAll?.();
   };
+
+  /*
+    finalizeArrowGesture fires when the gesture timer expires.
+    Runs the arrow recognizer on buffered strokes:
+    arrow-left triggers undo, arrow-right triggers redo, no match
+    commits all held strokes to canvas as individual history entries.
+  */
+  const finalizeArrowGesture = useCallback(() => {
+    const strokes = gestureStrokesRef.current;
+    const pending = pendingPathsRef.current;
+    gestureStrokesRef.current = [];
+    pendingPathsRef.current   = [];
+    gestureTimerRef.current   = null;
+
+    if (strokes.length === 0) return;
+
+    setPendingPaths([]);
+
+    const result = arrowRecognizerRef.current.Recognize(convertToArrowPDollar(strokes));
+    // Debug line to fix arrows to remove wavy and irregular lines as arrow gestures
+    // console.log('[Arrow] $P result:', result.Name, '| score:', result.Score.toFixed(3), '| strokes:', strokes.length);
+
+    if (result.Name === 'arrow-left') {
+      undoRef.current();
+      return;
+    }
+
+    if (result.Name === 'arrow-right') {
+      redoRef.current();
+      return;
+    }
+
+    // No arrow match — commit each held stroke as its own history entry
+    for (let i = 0; i < strokes.length; i++) {
+      pushHistoryRef.current();
+      const newPaths = [...pathsRef.current, pending[i]];
+      const newPts   = [...pathsPtsRef.current, [...strokes[i]]];
+      pathsRef.current    = newPaths;
+      pathsPtsRef.current = newPts;
+      setPaths([...newPaths]);
+      setPathsPts(newPts.map(a => [...a]));
+    }
+  }, []);
+
+  const finalizeArrowGestureRef = useRef(finalizeArrowGesture);
+  finalizeArrowGestureRef.current = finalizeArrowGesture;
 
   /*
     Pan gesture — built once via useRef so React Compiler can never
@@ -448,6 +446,11 @@ export function HandwritingCanvas({
         eraseSnapshotTaken.current = false;
 
         if (toolRef.current === 'pen') {
+          // // Cancel the pending timer — new stroke may extend the same arrow gesture
+          // if (gestureTimerRef.current !== null) {
+          //   clearTimeout(gestureTimerRef.current);
+          //   gestureTimerRef.current = null;
+          // }
           currentPathRef.current = p;
           setCurrentPath(p.copy());
         } else {
@@ -462,12 +465,30 @@ export function HandwritingCanvas({
           const pt = { x: e.x, y: e.y };
           pointsRef.current.push(pt);
 
-          // Detect scribble → switch to erase mode
-          if (!isErasingRef.current && detectScribble(pointsRef.current)) {
+          const spanX = Math.max(...pointsRef.current.map(p => p.x)) - Math.min(...pointsRef.current.map(p => p.x));
+          const spanY = Math.max(...pointsRef.current.map(p => p.y)) - Math.min(...pointsRef.current.map(p => p.y));
+          const looksHorizontal = spanX > 75 && spanX > spanY * 2.5;
+
+          // Only run $P every 8 points to avoid lag — recognition still works fine
+          if (!isErasingRef.current && !looksHorizontal && pointsRef.current.length % 8 === 0) {
+          const pdollarPts = pointsRef.current.map((p) => new Point(p.x, p.y, 0));
+          const scribbleResult = scribbleRecognizerRef.current.Recognize(pdollarPts);
+          if (scribbleResult.Name === 'scribble') {
             isErasingRef.current   = true;
             currentPathRef.current = null;
             setCurrentPath(null);
+
+            // if (gestureTimerRef.current !== null) {
+            //   clearTimeout(gestureTimerRef.current);
+            //   gestureTimerRef.current   = null;
+            //   gestureStrokesRef.current = [];
+            //   if (pendingPathsRef.current.length > 0) {
+            //     pendingPathsRef.current = [];
+            //     setPendingPaths([]);
+            //   }
+            // }
           }
+        }
 
           // If scribbling, erase instead of drawing.
           // Take one history snapshot for the whole gesture, not per stroke.
@@ -513,24 +534,144 @@ export function HandwritingCanvas({
           }
 
           const pts = pointsRef.current;
+          const p   = currentPathRef.current;
 
-          // Classify the gesture — fast horizontal swipe triggers undo/redo
-          const swipe = classifySwipe(pts);
-          if (swipe === 'undo') {
-            undoRef.current();
+          if (p && pts.length > 1) {
+            const committed = p.copy();
+
+            // ── Arrow gate ────────────────────────────────────────────────
+            // Thresholds derived from real iPad data — see decision log in git.
+            // Remove the console.log once gate tuning is complete.
+            const xs   = pts.map(pt => pt.x);
+            const ys   = pts.map(pt => pt.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const w    = maxX - minX;
+            const h    = Math.max(...ys) - Math.min(...ys);
+
+            const netDx               = Math.abs(pts[pts.length - 1].x - pts[0].x);
+            const netDisplacementRatio = w > 0 ? netDx / w : 0;
+
+            let arcLen = 0;
+            for (let i = 1; i < pts.length; i++) arcLen += dist(pts[i - 1], pts[i]);
+            const chordLen   = dist(pts[0], pts[pts.length - 1]);
+            const arcToChord = chordLen > 0 ? arcLen / chordLen : 99;
+
+            const endX          = pts[pts.length - 1].x;
+            const goesLeft      = endX < pts[0].x;
+            const tipX          = goesLeft ? minX : maxX;
+            const comeBackRatio = w > 0 ? Math.abs(endX - tipX) / w : 0;
+
+            // Left: real arrows return 0-28% from tip; writing strokes return 30%+
+            // Right: real arrows return 0-24%; writing strokes return 26%+
+            const comeBackOK = goesLeft ? (comeBackRatio < 0.28) : (comeBackRatio < 0.24);
+
+            // Count significant vertical direction reversals using stepped windows to
+            // avoid noise. Real arrows cross cleanly (0-3). Wavy lines oscillate (5+).
+            // yRevs==4 is allowed only when a direction change (arrowhead) is detected —
+            // that distinguishes a deliberate arrow from a wide wavy writing stroke.
+            const arrowhead = hasArrowhead(pts);
+            const step = Math.max(2, Math.floor(pts.length / 15));
+            let yRevs  = 0;
+            let prevDy = 0;
+            for (let i = step; i < pts.length; i += step) {
+              const dy = pts[i].y - pts[i - step].y;
+              if (Math.abs(dy) < 3) continue;
+              if (prevDy > 0 && dy < 0) yRevs++;
+              if (prevDy < 0 && dy > 0) yRevs++;
+              prevDy = dy;
+            }
+            const notWavy = yRevs <= 3 || (yRevs === 4 && arrowhead);
+
+            const looksLikeArrow = true;
+            
+            // Logs to see the arrows if they go haywire
+            
+            // console.log('[ARROW GATE]',
+            //   'w='         + w.toFixed(0),
+            //   'h='         + h.toFixed(0),
+            //   'wh='        + (w / h).toFixed(2),
+            //   'netDisp='   + netDisplacementRatio.toFixed(2),
+            //   'arc2chord=' + arcToChord.toFixed(2),
+            //   'cb='        + comeBackRatio.toFixed(3),
+            //   'yRevs='     + yRevs,
+            //   'arrowhead=' + arrowhead,
+            //   '=>'         + (looksLikeArrow ? 'PASS' : 'FAIL')
+            // );
+
+            if (looksLikeArrow) {
+              // Run arrow recognizer immediately — no buffering or delay
+              const result = arrowRecognizerRef.current.Recognize(convertToArrowPDollar([[...pts]]));
+              if (result.Name === 'arrow-left') {
+                pointsRef.current      = [];
+                currentPathRef.current = null;
+                setCurrentPath(null);
+                undoRef.current();
+                return;
+              }
+              if (result.Name === 'arrow-right') {
+                pointsRef.current      = [];
+                currentPathRef.current = null;
+                setCurrentPath(null);
+                redoRef.current();
+                return;
+              }
+              // Not an arrow — fall through to commit as a normal stroke
+
+              // ── Old buffered approach (commented out) ──────────────────────
+              // gestureStrokesRef.current.push([...pts]);
+              // pendingPathsRef.current.push(committed);
+              // setPendingPaths([...pendingPathsRef.current]);
+              // pointsRef.current      = [];
+              // currentPathRef.current = null;
+              // setCurrentPath(null);
+              // if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
+              // gestureTimerRef.current = setTimeout(() => {
+              //   finalizeArrowGestureRef.current();
+              // }, GESTURE_TIMEOUT_MS);
+              // return;
+            }
+
+            // // Normal stroke — flush any held arrow strokes first so ordering stays correct
+            // if (pendingPathsRef.current.length > 0) {
+            //   if (gestureTimerRef.current !== null) {
+            //     clearTimeout(gestureTimerRef.current);
+            //     gestureTimerRef.current = null;
+            //   }
+            //   const heldStrokes = gestureStrokesRef.current;
+            //   const heldPaths   = pendingPathsRef.current;
+            //   gestureStrokesRef.current = [];
+            //   pendingPathsRef.current   = [];
+            //   setPendingPaths([]);
+            //   for (let i = 0; i < heldStrokes.length; i++) {
+            //     pushHistoryRef.current();
+            //     const np  = [...pathsRef.current, heldPaths[i]];
+            //     const npt = [...pathsPtsRef.current, [...heldStrokes[i]]];
+            //     pathsRef.current    = np;
+            //     pathsPtsRef.current = npt;
+            //   }
+            // }
+
+            pushHistoryRef.current();
+            const newPaths = [...pathsRef.current, committed];
+            const newPts   = [...pathsPtsRef.current, [...pts]];
+            pathsRef.current    = newPaths;
+            pathsPtsRef.current = newPts;
+            setPaths(newPaths);
+            setPathsPts(newPts);
+
+            pointsRef.current      = [];
+            currentPathRef.current = null;
             setCurrentPath(null);
-            pointsRef.current = [];
-            return;
-          }
-          if (swipe === 'redo') {
-            redoRef.current();
-            setCurrentPath(null);
-            pointsRef.current = [];
+
+            // if (gestureTimerRef.current !== null) clearTimeout(gestureTimerRef.current);
+            // gestureTimerRef.current = setTimeout(() => {
+            //   finalizeArrowGestureRef.current();
+            // }, GESTURE_TIMEOUT_MS);
             return;
           }
 
           // Normal stroke — push history then commit
-          const p = currentPathRef.current;
           if (p) {
             pushHistoryRef.current();
             const newPaths = [...pathsRef.current, p];
@@ -722,6 +863,19 @@ export function HandwritingCanvas({
                 />
               )}
 
+              {/* Grey preview of strokes held in the arrow gesture buffer */}
+              {/* pendingPaths.map((d, i) => (
+                <Path
+                  key={`pending-${i}`}
+                  path={d}
+                  style="stroke"
+                  strokeWidth={strokeWidth}
+                  strokeJoin="round"
+                  strokeCap="round"
+                  color="#aaaaaa"
+                />
+              )) */}
+
               {selectPath && (
                 <Path
                   path={selectPath}
@@ -736,6 +890,9 @@ export function HandwritingCanvas({
           )}
         </View>
       </GestureDetector>
+      <Text style={styles.hint}>
+        draw right arrow for undo, left arrow for redo{"\n"}scribble to erase
+      </Text>
     </>
   );
 }
@@ -772,5 +929,11 @@ const styles = StyleSheet.create({
   },
   toolButtonLabelActive: {
     color: '#fff',
+  },
+  hint: {
+    textAlign: 'center',
+    color: '#888',
+    fontSize: 11,
+    marginTop: 6,
   },
 });

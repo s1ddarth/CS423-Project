@@ -3,7 +3,7 @@
 ### Prerequisites
 
 - **Node.js & npm**: Install the latest LTS version from the official Node.js site (https://nodejs.org/).
-- **Python 3.10+**: Required for the FastAPI backend.
+- **Python 3.12**: Required for the FastAPI backend.
 - **Expo CLI**:
 
   ```bash
@@ -36,7 +36,7 @@ Then follow the Expo instructions to open the app on:
 From the `math-expression-editor/backend` directory:
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
