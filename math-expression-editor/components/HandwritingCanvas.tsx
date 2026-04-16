@@ -6,7 +6,7 @@ import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 import { ArrowPoint, ArrowRecognizer } from '../recognizer/pdollar-arrows';
 
 // const BASE_URL = 'http://localhost:8000';
-const BASE_URL = 'http://10.0.0.81:8000';
+const BASE_URL = 'http://10.201.68.44:8000';
 
 const BACKEND_URL = `${BASE_URL}/recognize/upload`;
 
@@ -38,7 +38,7 @@ type HistoryEntry = { paths: SkPath[]; pts: Pt[][] };
   Used when calculating total scribble path length.
 */
 function dist(a: Pt, b: Pt) {
-  // sqrt((dx)^2 + (dy)^2)
+// sqrt((dx)^2 + (dy)^2)
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
@@ -540,8 +540,6 @@ export function HandwritingCanvas({
             const committed = p.copy();
 
             // ── Arrow gate ────────────────────────────────────────────────
-            // Thresholds derived from real iPad data — see decision log in git.
-            // Remove the console.log once gate tuning is complete.
             const xs   = pts.map(pt => pt.x);
             const ys   = pts.map(pt => pt.y);
             const minX = Math.min(...xs);
@@ -583,20 +581,31 @@ export function HandwritingCanvas({
             }
             const notWavy = yRevs <= 3 || (yRevs === 4 && arrowhead);
 
-            const looksLikeArrow = true;
+            // const looksLikeArrow = true;
+
+            // Replace with:
+            const looksLikeArrow =
+            arrowhead &&                       // must have a V-notch tip reversal
+            w > 60 &&                          // wide enough to be intentional
+            (w / h) > 2.5 &&                   // clearly horizontal, not a number/symbol
+            netDisplacementRatio > 0.55 &&     // travels mostly in one direction
+            arcToChord < 2.6 &&                // not excessively wiggly
+            comeBackOK &&                      // endpoint near the tip
+            notWavy;                           // no excessive vertical oscillation
+
+            
             
             // Logs to see the arrows if they go haywire
-            
             // console.log('[ARROW GATE]',
-            //   'w='         + w.toFixed(0),
-            //   'h='         + h.toFixed(0),
-            //   'wh='        + (w / h).toFixed(2),
-            //   'netDisp='   + netDisplacementRatio.toFixed(2),
-            //   'arc2chord=' + arcToChord.toFixed(2),
-            //   'cb='        + comeBackRatio.toFixed(3),
-            //   'yRevs='     + yRevs,
-            //   'arrowhead=' + arrowhead,
-            //   '=>'         + (looksLikeArrow ? 'PASS' : 'FAIL')
+              //   'w='         + w.toFixed(0),
+              //   'h='         + h.toFixed(0),
+              //   'wh='        + (w / h).toFixed(2),
+              //   'netDisp='   + netDisplacementRatio.toFixed(2),
+              //   'arc2chord=' + arcToChord.toFixed(2),
+              //   'cb='        + comeBackRatio.toFixed(3),
+              //   'yRevs='     + yRevs,
+              //   'arrowhead=' + arrowhead,
+              //   '=>'         + (looksLikeArrow ? 'PASS' : 'FAIL')
             // );
 
             if (looksLikeArrow) {
@@ -616,7 +625,7 @@ export function HandwritingCanvas({
                 redoRef.current();
                 return;
               }
-              // Not an arrow — fall through to commit as a normal stroke
+            // Not an arrow — fall through to commit as a normal stroke
 
               // ── Old buffered approach (commented out) ──────────────────────
               // gestureStrokesRef.current.push([...pts]);
@@ -891,7 +900,7 @@ export function HandwritingCanvas({
         </View>
       </GestureDetector>
       <Text style={styles.hint}>
-        draw right arrow for undo, left arrow for redo{"\n"}scribble to erase
+        draw left arrow for undo, right arrow for redo{"\n"}scribble to erase
       </Text>
     </>
   );
