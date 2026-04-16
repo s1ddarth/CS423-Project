@@ -350,6 +350,7 @@ export function HandwritingCanvas({
     Wipes the canvas. Pushes to history first so it can be undone.
   */
   const clearAll = () => {
+    onClearAll?.();
     if (!pathsRef.current.length) return;
     pushHistoryRef.current();
     pathsRef.current    = [];
@@ -375,7 +376,6 @@ export function HandwritingCanvas({
     gestureStrokesRef.current = [];
     pendingPathsRef.current   = [];
     setPendingPaths([]);
-    onClearAll?.();
   };
 
   /*
