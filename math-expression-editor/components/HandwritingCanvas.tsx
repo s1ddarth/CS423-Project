@@ -6,7 +6,7 @@ import { PDollarRecognizer, Point } from '../recognizer/pdollar';
 import { ArrowPoint, ArrowRecognizer } from '../recognizer/pdollar-arrows';
 
 // const BASE_URL = 'http://localhost:8000';
-const BASE_URL = 'http://10.0.0.81:8000';
+const BASE_URL = 'http://10.201.68.44:8000';
 
 const BACKEND_URL = `${BASE_URL}/recognize/upload`;
 
