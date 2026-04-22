@@ -189,7 +189,7 @@ export function HandwritingCanvas({
   const isErasingRef = useRef(false);
 
   // Controls how forgiving erase is
-  const eraserRadius = 20;
+  const eraserRadius = 10;
 
   const arrowRecognizerRef = useRef<any>(new ArrowRecognizer());
   const scribbleRecognizerRef = useRef<any>(new PDollarRecognizer());
@@ -350,6 +350,7 @@ export function HandwritingCanvas({
     Wipes the canvas. Pushes to history first so it can be undone.
   */
   const clearAll = () => {
+    onClearAll?.();
     if (!pathsRef.current.length) return;
     pushHistoryRef.current();
     pathsRef.current    = [];
@@ -375,7 +376,6 @@ export function HandwritingCanvas({
     gestureStrokesRef.current = [];
     pendingPathsRef.current   = [];
     setPendingPaths([]);
-    onClearAll?.();
   };
 
   /*
@@ -584,14 +584,7 @@ export function HandwritingCanvas({
             // const looksLikeArrow = true;
 
             // Replace with:
-            const looksLikeArrow =
-            arrowhead &&                       // must have a V-notch tip reversal
-            w > 60 &&                          // wide enough to be intentional
-            (w / h) > 2.5 &&                   // clearly horizontal, not a number/symbol
-            netDisplacementRatio > 0.55 &&     // travels mostly in one direction
-            arcToChord < 2.6 &&                // not excessively wiggly
-            comeBackOK &&                      // endpoint near the tip
-            notWavy;                           // no excessive vertical oscillation
+            const looksLikeArrow = w > 60;
 
             
             
@@ -701,7 +694,6 @@ export function HandwritingCanvas({
 
           // Omit short shapes
           if (lassoPts.length >= 3) {
-
             // Close it
             const sp = selectPathRef.current;
             if (sp) {
