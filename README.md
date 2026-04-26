@@ -1,5 +1,12 @@
 ## Math Expression Editor
 
+### What is this project?
+
+The goal of this project is to implement a Math Handwriting Recognizer that leverages natural gestures.
+This allows users to hand-write their math equations and have them convert to LaTeX code, rather than a syntax-driven LaTeX editing interaction. 
+This shift in interaction is enabled by gesture-based editing, such as scribble-to-delete and circle-to-submit operations.
+
+
 ### Prerequisites
 
 - **Node.js & npm**: Install the latest LTS version from the official Node.js site (https://nodejs.org/).
