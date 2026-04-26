@@ -1,6 +1,6 @@
 ## Math Expression Editor
 
-### What is this project?
+### What is the goal of this project?
 
 The goal of this project is to implement a Math Handwriting Recognizer that leverages natural gestures.
 This allows users to hand-write their math equations and have them convert to LaTeX code, rather than a syntax-driven LaTeX editing interaction. 
